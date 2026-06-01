@@ -3,6 +3,7 @@
 #include <string.h>
 #include <time.h>
 #include <windows.h>
+#include <conio.h>
 
 int produto_id = 1;
 int etapa_id = 1;
@@ -580,7 +581,8 @@ atividade* buscar_atividade(etapas *e, int id){
 }
 
 void opcoes(){
-    int opcao;
+    while(1){
+        int opcao;
         printf("Opcoes:\n");
         printf("1 - Criar produto\n");
         printf("2 - Criar etapa\n");
@@ -590,7 +592,8 @@ void opcoes(){
         printf("6 - Atualizar atividade\n");
         printf("7 - Pegar_produto_Etapa\n");
         printf("8 - Mostrar pilha\n");
-        printf("9 - Sair\n");
+        printf("9 - Continuar simulacao\n");
+        printf("10 - Sair\n");
         scanf("%d", &opcao);
         switch (opcao)
         {
@@ -650,7 +653,12 @@ void opcoes(){
                 mostrar_pilha(op == 1 ? concluidos : lixo);
             } 
             break;
-        case 9:
+        case 9:{
+                printf("Continuando simulacao\n");
+                return;
+        }
+            break;
+        case 10:
             {
                 printf("Encerrando programa\n");
                 liberar_fila(fila_entrada);
@@ -664,8 +672,10 @@ void opcoes(){
                 printf("Opcao invalida\n");
                 break;
             }
-    }
+    }}
+    
 }
+
 int linha_vazia(){
     if (!g_e || !g_e->primeira_etapa)
         return 1;
@@ -743,20 +753,33 @@ void popular(int vazao, int qtd){
         criar_produto(&fila_entrada);
     }
 }
+
 void simular(int max_ticks){
     int tick = 0;
     while (tick < max_ticks)
     {
         tick++;
         printf("\nTick %d\n", tick);
+        if (_kbhit()) { // Verifica se uma tecla foi pressionada
+            char c = _getch(); // Lê o caractere da tecla pressionada
+            if (c == 'q' || c == 'Q') { // Se for 'q' ou 'Q', encerra a simulação
+                printf("Encerrando simulacao por comando do usuario\n");
+                break;
+            }
+            if (c == 'p' || c == 'P') { // Se for 'p' ou 'P', pausa e exibe as opções
+                opcoes();//posteriormente implementar uma função melhor de exibição da situação atual do programa
+            }
+        }
 
         //popula a fila de entrada com novos produtos
         printf("fase de populacao da fila de entrada\n");
         popular(2, 10); // Exemplo arbitrário: 1 produto por tick, até 20 produtos
+        
         if(linha_vazia()){
             printf("Linha de producao vazia, encerrando simulacao\n");
             break;
         }
+        
         //decrementa o tempo restante de todos os produtos em execução
         printf("fase de envelhecimento dos produtos\n");
         envelhecer_produtos();
@@ -769,7 +792,7 @@ void simular(int max_ticks){
         printf("fase de entrada dos produtos\n");
         entradas();
 
-        Sleep(0);//periodo do clock em milisegundos, pode ser alterado depois
+        Sleep(1000);//periodo do clock em milisegundos, pode ser alterado depois
     }
 }
 
