@@ -2,9 +2,11 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <windows.h>
 
 int produto_id = 1;
 int etapa_id = 1;
+int criados = 0;
 
 
 typedef struct etapa etapa;
@@ -141,7 +143,9 @@ void criar_produto(fila **f){
     novo->id = produto_id;
     novo->defeituoso = 0;
     novo->falhas = 0;
+
     produto_id++;
+    criados++;
     printf("Produto %d criado e adicionado no final da fila \n", novo->id);
 }
 produto *desenfileirar(fila *f){
@@ -174,6 +178,7 @@ void mostrar_fila(fila *f){
     printf("\n");
 }
 void mostrar_pilha(pilha *p){
+    printf("Pilha de %s: \n", (p == lixo) ? "lixo" : "concluidos");
     if (!p || !p->topo)
     {
         printf("Pilha vazia\n");
@@ -194,7 +199,7 @@ void falhar_produto(produto *p, float failrate){
     if (r < failrate)
     {   
         p->falhas++;
-        if(r < (failrate / 2)){
+        if(r < (failrate / 2 || p->falhas > 3)){ // se for uma falha catastrófica ou se o produto já tiver falhado mais de 3 vezes, considera-se o produto como defeituoso e não tenta consertar mais
             printf("Produto %d teve uma falha catastrófica na atividade %d\n", p->id, p->atividade_atual->id);
             p->defeituoso = 2;
             return;
@@ -236,7 +241,7 @@ void criar_atividade(etapa *dona, int indice, int capacidade){
     nova->capacidade_max = capacidade;// capacidade arbitraria, pode ser alterada depois
     nova->ocupacao = 0;
     nova->tempo_de_processamento = 2;
-    nova->failrate = 0.2; // taxa de falha arbitraria, pode ser alterada depois
+    nova->failrate = 0.1; // taxa de falha arbitraria, pode ser alterada depois
     nova->f = NULL;
     nova->proxima_atividade = NULL;
     criar_slots(nova); 
@@ -419,7 +424,7 @@ void avancar_produto(atividade *a, produto *p){//precisa de um ponteiro global p
     a->ocupacao--;
     if(p->defeituoso){
         if(p->defeituoso == 2){
-            printf("Produto %d processado com falha catastrófica na atividade % d, e é considerado defeituoso\n", p->id, a->id);
+            printf("Produto %d processado com falha catastrofica na atividade % d, e eh considerado defeituoso\n", p->id, a->id);
             empilhar(p, &lixo);
             a->etapa_dona->ocupacao--;
             return;
@@ -430,7 +435,6 @@ void avancar_produto(atividade *a, produto *p){//precisa de um ponteiro global p
         return;
     }
         
-    printf("Produto %d processado com sucesso na atividade %d\n", p->id, a->id);
     
     if (a->proxima_atividade)
     {
@@ -452,19 +456,18 @@ void avancar_produto(atividade *a, produto *p){//precisa de um ponteiro global p
 }
 void atualizar_atividade(atividade *a){ //atualiza todos os produtos da atividade
     //depois refatorar para legibilidade
-    //implementar verificação de erro? não, implementar na funçao de avançar, pois o produto sai de qualquer jeito, soq pra tras
 
     for(int i = 0; i < a->capacidade_max; i++){//olha cada slot 
         slot *s = &a->slots[i];
         if(s->p){//se tiver produto no slot
-            s->tempo_restante--;//decrementa o tempo dele
+            //s->tempo_restante--; recebeu função própria
             if (s->tempo_restante <= 0)//se o produto terminou de ser processado
             {
                 produto *p = s->p;
                 printf("Slot %d: Produto %d terminou de ser processado na Atividade %d\n", i, p->id, a->id);
                 falhar_produto(p, a->failrate);//verifica se o produto falhou
                 avancar_produto(a, p);
-                a->slots[i].p = NULL;
+                a->slots[i].p = NULL;//melhorar legibilidade disso depois
             }else{
                 printf("Slot %d: Produto em execucao \n", i);    
             }
@@ -473,7 +476,18 @@ void atualizar_atividade(atividade *a){ //atualiza todos os produtos da atividad
         }
     }
 }
+void envelhecer_atividade(atividade *a){
+    for(int i = 0; i < a->capacidade_max; i++){
+        slot *s = &a->slots[i];
+        if(s->p){
+            s->tempo_restante--;
+        }
+    }
+}
 
+void liberar_produto(produto *p){
+    free(p);
+}
 void liberar_fila(fila *f){
     if (!f)
         return;
@@ -535,8 +549,17 @@ void liberar_pilha(pilha *p){
     }
     free(p);
 }
+void encerrar_simulacao(){
+    printf("Encerrando simulacao\n");
+    liberar_fila(fila_entrada);
+    liberar_etapas(g_e);
+    liberar_pilha(lixo);
+    liberar_pilha(concluidos);
+    exit(0);
+}
 
 etapa* buscar_etapa(etapas *e, int id){
+    if(!e) return NULL;
     etapa *atual = e->primeira_etapa;
     while (atual && atual->id != id)
     {
@@ -643,24 +666,123 @@ void opcoes(){
             }
     }
 }
-void simulador(){
-    //responsável por controlar o fluxo dos produtos 
-    //loop (sugestao do claudio)
-        //avançar tempo dentro de cada atividade
-        //resolve as saidas de atividades
-        //resolve as entradas de atividades
-        //admite novos produtos na linha
-        //avança o clock
+int linha_vazia(){
+    if (!g_e || !g_e->primeira_etapa)
+        return 1;
+    if(fila_entrada && fila_entrada->em_fila > 0) 
+        return 0;
+    etapa *atual = g_e->primeira_etapa;
+    while (atual)
+    {
+        if (atual->ocupacao > 0)
+            return 0;
+        atual = atual->proxima_etapa;
+    }
+    return 1;
+}
+int ha_produtos_para_entrar_etapa(etapa *e){
+    etapa *etapa_origem = e->etapa_anterior;
+    if (!etapa_origem)
+        return (fila_entrada && fila_entrada->em_fila > 0);
+    return (etapa_origem->f && etapa_origem->f->em_fila > 0);
+}
+int ha_produtos_para_entrar_atividade(atividade *a){
+    return (a->f && a->f->em_fila > 0);
+}
+void envelhecer_produtos(){
+    etapa *atual_etapa = g_e->primeira_etapa;
+        while (atual_etapa){
+            atividade *atual_atividade = atual_etapa->primeira_atividade;
+            while (atual_atividade)
+            {
+                envelhecer_atividade(atual_atividade);
+                atual_atividade = atual_atividade->proxima_atividade;
+            }
+            atual_etapa = atual_etapa->proxima_etapa;
+        }
+}
+void saidas(){
+    etapa *atual_etapa = g_e->primeira_etapa;
+        while (atual_etapa){
+            atividade *atual_atividade = atual_etapa->primeira_atividade;
+            while (atual_atividade)
+            {
+                atualizar_atividade(atual_atividade);
+                atual_atividade = atual_atividade->proxima_atividade;
+            }
+            atual_etapa = atual_etapa->proxima_etapa;
+        }
+}
+void entradas(){
+    etapa *atual_etapa = g_e->ultima_etapa;
+        while (atual_etapa)
+        {
+            while (atual_etapa->ocupacao < atual_etapa->capacidade_max && ha_produtos_para_entrar_etapa(atual_etapa))
+            {
+                pegar_produto_etapa(atual_etapa);
+            }
+            atividade *atual_atividade = atual_etapa->primeira_atividade;
+            while (atual_atividade)//para cada atividade da etapa (qualquer ordem):
+            {
+                while (atual_atividade->ocupacao < atual_atividade->capacidade_max && ha_produtos_para_entrar_atividade(atual_atividade))
+                {
+                    pegar_produto_atividade(atual_atividade);
+                }
+                atual_atividade = atual_atividade->proxima_atividade;
+            }
+            atual_etapa = atual_etapa->etapa_anterior;//percorre as etapas em ordem reversa
+        }
+    
+}
+void popular(int vazao, int qtd){
+    
+    for (int i = 0; i < vazao; i++)//cria v produtos por tick, no momento vazao precisa ser um inteiro igual ou maior 1
+    {   if(criados >= qtd){
+            return;
+        }
+        criar_produto(&fila_entrada);
+    }
+}
+void simular(int max_ticks){
+    int tick = 0;
+    while (tick < max_ticks)
+    {
+        tick++;
+        printf("\nTick %d\n", tick);
+
+        //popula a fila de entrada com novos produtos
+        printf("fase de populacao da fila de entrada\n");
+        popular(2, 10); // Exemplo arbitrário: 1 produto por tick, até 20 produtos
+        if(linha_vazia()){
+            printf("Linha de producao vazia, encerrando simulacao\n");
+            break;
+        }
+        //decrementa o tempo restante de todos os produtos em execução
+        printf("fase de envelhecimento dos produtos\n");
+        envelhecer_produtos();
+
+        //resolve as saidas de todos os produtos que terminaram de ser processados
+        printf("fase de saida dos produtos\n");
+        saidas();
+
+        //admite em execução todos os produtos que puderem entrar, tanto nas atividades quanto nas etapas
+        printf("fase de entrada dos produtos\n");
+        entradas();
+
+        Sleep(0);//periodo do clock em milisegundos, pode ser alterado depois
+    }
 }
 
 int main(){
-    //srand(time(NULL));
+    srand(time(NULL));
     
+    criar_etapa(&g_e);
+    criar_etapa(&g_e);
+    criar_etapa(&g_e);
+
+    simular(100);
+    mostrar_pilha(concluidos);
+    mostrar_pilha(lixo);
     
-    
-    while(1)
-    {
-        opcoes();
-    }
-    return 0;
+    encerrar_simulacao();
 }
