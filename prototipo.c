@@ -745,7 +745,13 @@ void opcoes()
         break;
         case 9:
         {
-            printf("Continuando simulacao\n");
+            printf("Continuando simulacao em \n");
+            Sleep(500);
+            printf("3\n");
+            Sleep(1000);
+            printf("2\n");
+            Sleep(1000);
+            printf("1\n");
             return;
         }
         break;
@@ -902,7 +908,7 @@ void simular(int max_ticks)
 
         // popula a fila de entrada com novos produtos
         printf("fase de populacao da fila de entrada\n");
-        popular(2, 10); // Exemplo arbitrário: 1 produto por tick, até 20 produtos
+        popular(2, 5); // Exemplo arbitrário: 1 produto por tick, até n produtos
 
         if (linha_vazia())
         {
