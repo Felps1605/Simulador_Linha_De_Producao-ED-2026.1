@@ -22,6 +22,7 @@ void inicializar_simulacao(simulacao *s)
     s->vazao = 1;
     s->n_produtos_total = 10; //parte arbitrária por enquanto
     s->max_ticks = 100;
+    s->semente = time(NULL); //se for inserida uma semente ela deve ser utilizada.
 }
 void criar_slots(atividade *a)
 {
