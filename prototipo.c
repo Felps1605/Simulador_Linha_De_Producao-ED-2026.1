@@ -5,10 +5,7 @@
 #include <windows.h>
 #include <conio.h>
 
-int produto_id = 1;
-int etapa_id = 1;
-int criados = 0;
-int MODO_MANUAL;
+
 
 typedef struct etapa etapa;
 typedef struct atividade atividade;
@@ -17,12 +14,42 @@ typedef struct fila fila;
 typedef struct etapas etapas;
 typedef struct slot slot;
 typedef struct pilha pilha;
+typedef struct simulacao simulacao;
 
-fila *fila_entrada = NULL;
-pilha *lixo = NULL;
-pilha *concluidos = NULL;
-etapas *g_e = NULL;
+struct simulacao
+{
+    fila *fila_entrada;
+    pilha *lixo;
+    pilha *concluidos;
+    etapas * linha; //etapas *g_e = NULL;
 
+    int produto_id;
+    int etapa_id;
+    int produtos_criados;
+    int MODO_MANUAL;
+
+    int    semente;
+    char   nome_cenario[100];
+    char   arquivo_entrada[100];
+    char   id_simulacao[100];
+    int    n_produtos_total;
+    int    vazao;
+    char   modelo_produto[100];
+    int    max_ticks;
+
+    // Estado
+    int    tick_atual;
+    int    produtos_concluidos;
+    int    falhas_totais;
+    
+    
+
+    //TODA E QUALQUER FUNÇÃO QUE USE UMA "VARIAVEL GLOBAL": g_e, lixo, concluidos, fila de entrada, tick, ids e n de criados etc PRECISA SER REVISADA
+    //NECESSÁRIO UMA CAÇA A QUALQUER REFERENCIA AO SISTEMA ANTIGO DE VARIÁVEIS GLOBAIS
+    //REVISAR FUNÇAO POR FUNCAO
+    
+    //será q vale a pena fazer um ponteiro global para a simulaçao?
+};
 struct etapa
 {
     int id;
@@ -34,6 +61,7 @@ struct etapa
     fila *f;
     int capacidade_max; // somatoria da capacidade de cada atividade + espaço para filas
     int ocupacao;       // número de produtos atualmente na etapa, tanto em atividades quanto em
+    //int num_atividades;
 };
 struct atividade
 {
@@ -80,6 +108,23 @@ struct pilha
     produto *base;
     int em_pilha;
 };
+
+void inicializar_simulacao(simulacao *s)
+{
+    s->fila_entrada = NULL;
+    s->lixo = NULL;
+    s->concluidos = NULL;
+    s->linha = NULL;
+    s->produto_id = 1;
+    s->etapa_id = 1;
+    s->produtos_criados = 0;
+    s->MODO_MANUAL = 0; // inicia em modo manual, pode ser alterado depois
+
+
+    s->vazao = 1;
+    s->n_produtos_total = 10; //parte arbitrária por enquanto
+    s->max_ticks = 100;
+}
 
 void enfileirar(produto *p, fila **f)
 {
@@ -131,7 +176,7 @@ void empilhar(produto *p, pilha **pp)
     p->proximo_produto = (*pp)->topo;
     (*pp)->topo = p;
 }
-void criar_produto(fila **f)
+void criar_produto(simulacao *s)
 {
     // cria um novo produto, aloca memória, inicializa campos, etc.
     produto *novo = malloc(sizeof(produto));
@@ -143,13 +188,13 @@ void criar_produto(fila **f)
     novo->proximo_produto = NULL;
     novo->atividade_atual = NULL;
     novo->etapa_atual = NULL;
-    enfileirar(novo, f); // adiciona o produto na fila de entrada, que pode ser passada como argumento ou ser um ponteiro global, ou algo do tipo
-    novo->id = produto_id;
+    enfileirar(novo, &s->fila_entrada); // adiciona o produto na fila de entrada, que pode ser passada como argumento ou ser um ponteiro global, ou algo do tipo
+    novo->id = s->produto_id;
     novo->defeituoso = 0;
     novo->falhas = 0;
 
-    produto_id++;
-    criados++;
+    s->produto_id++;
+    s->produtos_criados++;
     printf("Produto %d criado e adicionado no final da fila \n", novo->id);
 }
 produto *desenfileirar(fila *f)
@@ -183,9 +228,9 @@ void mostrar_fila(fila *f)
     }
     printf("\n");
 }
-void mostrar_pilha(pilha *p)
+void mostrar_pilha(pilha *p, simulacao *s)
 {
-    printf("Pilha de %s: \n", (p == lixo) ? "lixo" : "concluidos");
+    printf("Pilha de %s: \n", (p == s->lixo) ? "lixo" : "concluidos");
     if (!p || !p->topo)
     {
         printf("Pilha vazia\n");
@@ -247,7 +292,8 @@ void criar_atividade(etapa *dona, int indice, int capacidade)
     nova->id = dona->id * 100 + indice;
     snprintf(nova->nome, sizeof(nova->nome), "Atividade %d", nova->id);
     nova->etapa_dona = dona;
-    nova->capacidade_max = capacidade; // capacidade arbitraria, pode ser alterada depois
+    int qtd_uf = 1; // quantidade de unidades funcionais, arbitraria, pode ser alterada depois
+    nova->capacidade_max = capacidade * qtd_uf; // capacidade arbitraria, pode ser alterada depois
     nova->ocupacao = 0;
     nova->tempo_de_processamento = 2;
     nova->failrate = 0.1; // taxa de falha arbitraria, pode ser alterada depois
@@ -296,7 +342,7 @@ void mostrar_atividades(atividade *primeira)
     }
 }
 
-void criar_etapa(etapas **e)
+void criar_etapa(simulacao *s)
 {
     etapa *nova = malloc(sizeof(etapa));
     if (!nova)
@@ -304,32 +350,32 @@ void criar_etapa(etapas **e)
         printf("\n\nErro ao alocar memória! \n\n");
         exit(1);
     }
-    nova->id = etapa_id;
-    snprintf(nova->nome, sizeof(nova->nome), "Etapa %d", etapa_id); // default, pode ser alterado depois
-    etapa_id++;
+    nova->id = s->etapa_id;
+    snprintf(nova->nome, sizeof(nova->nome), "Etapa %d", s->etapa_id); // default, pode ser alterado depois
+    s->etapa_id++;
     nova->primeira_atividade = NULL;
     nova->ultima_atividade = NULL;
     nova->proxima_etapa = NULL;
     nova->ocupacao = 0;
     nova->capacidade_max = 0;
 
-    if (*e == NULL)
+    if (s->linha == NULL)
     {
-        *e = malloc(sizeof(etapas));
-        if (!*e)
+        s->linha = malloc(sizeof(etapas));
+        if (!s->linha)
         {
             printf("\n\nErro ao alocar memória! \n\n");
             exit(1);
         }
-        (*e)->primeira_etapa = nova;
+        s->linha->primeira_etapa = nova;
         nova->etapa_anterior = NULL;
     }
     else
     {
-        (*e)->ultima_etapa->proxima_etapa = nova;
-        nova->etapa_anterior = (*e)->ultima_etapa;
+        s->linha->ultima_etapa->proxima_etapa = nova;
+        nova->etapa_anterior = s->linha->ultima_etapa;
     }
-    (*e)->ultima_etapa = nova;
+    s->linha->ultima_etapa = nova;
 
     // fila de prontos para ir para a próxima etapa
     nova->f = malloc(sizeof(fila));
@@ -372,7 +418,7 @@ void mostrar_etapas(etapas *e)
     }
 }
 
-void pegar_produto_etapa(etapa *e)
+void pegar_produto_etapa(etapa *e, fila *fila_entrada)
 { // precisa de um ponteiro global pra fila de entrada
     // se tiver espaço
 
@@ -438,25 +484,31 @@ void pegar_produto_atividade(atividade *a)
 
     printf("Nenhum produto disponivel para pegar na atividade %d\n", a->id);
 }
-void avancar_produto(atividade *a, produto *p)
-{ // precisa de um ponteiro global pra pilha de lixo e de concluidos
-
-    a->ocupacao--;
+int verificar_defeitos(produto *p, simulacao *s)
+{
     if (p->defeituoso)
     {
         if (p->defeituoso == 2)
         {
-            printf("Produto %d processado com falha catastrofica na atividade % d, e eh considerado defeituoso\n", p->id, a->id);
-            empilhar(p, &lixo);
-            a->etapa_dona->ocupacao--;
-            return;
+            printf("Produto %d processado com falha catastrofica e direcionado a pilha de\n", p->id);
+            empilhar(p, &s->lixo);
+            p->atividade_atual->etapa_dona->ocupacao--;
+            return 1;
         }
-        printf("Produto %d processado com falha na atividade %d, mas ainda pode ser consertado\n", p->id, a->id);
+        printf("Produto %d processado com falha recuperável, redirecionado para o começo da etapa %d\n", p->id, p->atividade_atual->etapa_dona->id);
         p->defeituoso = 0;
-        enfileirar(p, &a->etapa_dona->primeira_atividade->f); // coloca o produto de volta na fila de entrada da primeira atividade da etapa, para tentar consertar o produto
-        return;
+        enfileirar(p, &(p->atividade_atual->etapa_dona->primeira_atividade->f)); // coloca o produto de volta na fila de entrada da primeira atividade da etapa, para tentar consertar o produto
+        return 1;
     }
+    return 0;
 
+}
+void avancar_produto(atividade *a, produto *p, simulacao *s)
+{ 
+
+    a->ocupacao--;
+    if(verificar_defeitos(p, s)) return;
+    
     if (a->proxima_atividade)
     {
         enfileirar(p, &a->proxima_atividade->f); // coloca o produto na fila de entrada da proxima atividade,
@@ -470,12 +522,12 @@ void avancar_produto(atividade *a, produto *p)
         enfileirar(p, &a->etapa_dona->f);
         return;
     }
-    printf("Produto %d concluiu a última etapa do processo\n", p->id);
-    empilhar(p, &concluidos);
+    printf("Produto %d concluiu a ultima etapa do processo\n", p->id);
+    empilhar(p, &s->concluidos);
     a->etapa_dona->ocupacao--;
     return;
 }
-void atualizar_atividade(atividade *a)
+void atualizar_atividade(atividade *a, simulacao *sim)
 { // atualiza todos os produtos da atividade
     // depois refatorar para legibilidade
 
@@ -490,17 +542,17 @@ void atualizar_atividade(atividade *a)
                 produto *p = s->p;
                 printf("Slot %d: Produto %d terminou de ser processado na Atividade %d\n", i, p->id, a->id);
                 falhar_produto(p, a->failrate); // verifica se o produto falhou
-                avancar_produto(a, p);
+                avancar_produto(a, p, sim);
                 a->slots[i].p = NULL; // melhorar legibilidade disso depois
             }
-            else
+            /*else
             {
                 printf("Slot %d: Produto em execucao \n", i);
             }
         }
         else
         {
-            printf("slot %d: vazio \n", i);
+            printf("slot %d: vazio \n", i);*/
         }
     }
 }
@@ -516,10 +568,7 @@ void envelhecer_atividade(atividade *a)
     }
 }
 
-void liberar_produto(produto *p)
-{
-    free(p);
-}
+
 void liberar_fila(fila *f)
 {
     if (!f)
@@ -589,13 +638,13 @@ void liberar_pilha(pilha *p)
     }
     free(p);
 }
-void encerrar_simulacao()
+void encerrar_simulacao(simulacao *s)
 {
     printf("Encerrando simulacao\n");
-    liberar_fila(fila_entrada);
-    liberar_etapas(g_e);
-    liberar_pilha(lixo);
-    liberar_pilha(concluidos);
+    liberar_fila(s->fila_entrada);
+    liberar_etapas(s->linha);
+    liberar_pilha(s->lixo);
+    liberar_pilha(s->concluidos);
     exit(0);
 }
 
@@ -623,7 +672,19 @@ atividade *buscar_atividade(etapas *e, int id)
     return atual; // ou devolve nulo ou devolve a atividade encontrada
 }
 
-void opcoes()
+void contagem_regressiva( const char *mensagem)
+{
+    printf("%s\n", mensagem);
+    Sleep(500);
+    printf("3\n");
+    Sleep(1000);
+    printf("2\n");
+    Sleep(1000);
+    printf("1\n");
+    Sleep(1000);
+}
+
+void opcoes(simulacao *s)
 {
     while (1)
     {
@@ -638,7 +699,7 @@ void opcoes()
         printf("7 - Pegar_produto_Etapa\n");
         printf("8 - Mostrar pilha\n");
         printf("9 - Continuar simulacao\n");
-        printf("10 - Alternar modo manual/automatico (atualmente %s)\n", MODO_MANUAL ? "manual" : "automatico");
+        printf("10 - Alternar modo manual/automatico (atualmente %s)\n", s->MODO_MANUAL ? "manual" : "automatico");
         printf("11 - Sair\n");
         
         scanf(" %d", &opcao);
@@ -646,10 +707,10 @@ void opcoes()
         {
         
         case 1:
-            criar_produto(&fila_entrada);
+            criar_produto(s);
             break;
         case 2:
-            criar_etapa(&g_e);
+            criar_etapa(s);
             break;
         case 3:
         {
@@ -663,14 +724,14 @@ void opcoes()
             switch (op_fila)
             {
             case 1:
-                mostrar_fila(fila_entrada);
+                mostrar_fila(s->fila_entrada);
                 break;
             case 2:
             {
                 int id;
                 printf("Digite o id da etapa: ");
                 scanf("%d", &id);
-                etapa *et = buscar_etapa(g_e, id);
+                etapa *et = buscar_etapa(s->linha, id);
                 if (et)
                     mostrar_fila(et->f);
                 else
@@ -682,7 +743,7 @@ void opcoes()
                 int id;
                 printf("Digite o id da atividade: ");
                 scanf("%d", &id);
-                atividade *a = buscar_atividade(g_e, id);
+                atividade *a = buscar_atividade(s->linha, id);
                 if (a)
                     mostrar_fila(a->f);
                 else
@@ -697,14 +758,14 @@ void opcoes()
         }
         break;
         case 4:
-            mostrar_etapas(g_e);
+            mostrar_etapas(s->linha);
             break;
         case 5:
         {
             int id;
             printf("Digite o id da atividade: ");
             scanf("%d", &id);
-            atividade *a = buscar_atividade(g_e, id);
+            atividade *a = buscar_atividade(s->linha, id);
             if (a)
                 pegar_produto_atividade(a);
             else
@@ -716,9 +777,9 @@ void opcoes()
             int id;
             printf("Digite o id da atividade: ");
             scanf("%d", &id);
-            atividade *a = buscar_atividade(g_e, id);
+            atividade *a = buscar_atividade(s->linha, id);
             if (a)
-                atualizar_atividade(a);
+                atualizar_atividade(a, s);
             else
                 printf("Atividade nao encontrada\n");
         }
@@ -728,9 +789,9 @@ void opcoes()
             int id;
             printf("Digite o id da etapa: ");
             scanf("%d", &id);
-            etapa *et = buscar_etapa(g_e, id);
+            etapa *et = buscar_etapa(s->linha, id);
             if (et)
-                pegar_produto_etapa(et);
+                pegar_produto_etapa(et, s->fila_entrada);
             else
                 printf("Etapa nao encontrada\n");
         }
@@ -740,32 +801,23 @@ void opcoes()
             int op;
             printf("Pilha de concluidos ou lixo? (1 - concluidos, 2 - lixo): ");
             scanf("%d", &op);
-            mostrar_pilha(op == 1 ? concluidos : lixo);
+            mostrar_pilha(op == 1 ? s->concluidos : s->lixo, s);
         }
         break;
         case 9:
         {
-            printf("Continuando simulacao em \n");
-            Sleep(500);
-            printf("3\n");
-            Sleep(1000);
-            printf("2\n");
-            Sleep(1000);
-            printf("1\n");
+            contagem_regressiva("Continuando simulacao em");
             return;
         }
         break;
-        case 10:
-            MODO_MANUAL = !MODO_MANUAL;
-            printf("Modo manual %s\n", MODO_MANUAL ? "ativado" : "desativado");
-            break;
+        case 10:{
+            s->MODO_MANUAL = !s->MODO_MANUAL;
+            printf("Modo manual %s\n", s->MODO_MANUAL ? "ativado" : "desativado");
+        }
+        break;
         case 11:
         {
-            printf("Encerrando programa\n");
-            liberar_fila(fila_entrada);
-            liberar_etapas(g_e);
-            liberar_pilha(lixo);
-            liberar_pilha(concluidos);
+            encerrar_simulacao(s);
         }
             exit(0);
         default:
@@ -777,13 +829,13 @@ void opcoes()
     }
 }
 
-int linha_vazia()
+int linha_vazia(simulacao *s)
 {
-    if (!g_e || !g_e->primeira_etapa)
+    if (!s->linha || !s->linha->primeira_etapa)
         return 1;
-    if (fila_entrada && fila_entrada->em_fila > 0)
+    if (s->fila_entrada && s->fila_entrada->em_fila > 0)
         return 0;
-    etapa *atual = g_e->primeira_etapa;
+    etapa *atual = s->linha->primeira_etapa;
     while (atual)
     {
         if (atual->ocupacao > 0)
@@ -792,20 +844,20 @@ int linha_vazia()
     }
     return 1;
 }
-int ha_produtos_para_entrar_etapa(etapa *e)
+int ha_produtos_para_entrar_etapa(etapa *e, simulacao *s)
 {
     etapa *etapa_origem = e->etapa_anterior;
     if (!etapa_origem)
-        return (fila_entrada && fila_entrada->em_fila > 0);
+        return (s->fila_entrada && s->fila_entrada->em_fila > 0);
     return (etapa_origem->f && etapa_origem->f->em_fila > 0);
 }
 int ha_produtos_para_entrar_atividade(atividade *a)
 {
     return (a->f && a->f->em_fila > 0);
 }
-void envelhecer_produtos()
+void envelhecer_produtos(simulacao *s)
 {
-    etapa *atual_etapa = g_e->primeira_etapa;
+    etapa *atual_etapa = s->linha->primeira_etapa;
     while (atual_etapa)
     {
         atividade *atual_atividade = atual_etapa->primeira_atividade;
@@ -817,28 +869,28 @@ void envelhecer_produtos()
         atual_etapa = atual_etapa->proxima_etapa;
     }
 }
-void saidas()
+void saidas(simulacao *s)
 {
-    etapa *atual_etapa = g_e->primeira_etapa;
+    etapa *atual_etapa = s->linha->primeira_etapa;
     while (atual_etapa)
     {
         atividade *atual_atividade = atual_etapa->primeira_atividade;
         while (atual_atividade)
         {
-            atualizar_atividade(atual_atividade);
+            atualizar_atividade(atual_atividade, s);
             atual_atividade = atual_atividade->proxima_atividade;
         }
         atual_etapa = atual_etapa->proxima_etapa;
     }
 }
-void entradas()
+void entradas(simulacao *s)
 {
-    etapa *atual_etapa = g_e->ultima_etapa;
+    etapa *atual_etapa = s->linha->ultima_etapa;
     while (atual_etapa)
     {
-        while (atual_etapa->ocupacao < atual_etapa->capacidade_max && ha_produtos_para_entrar_etapa(atual_etapa))
+        while (atual_etapa->ocupacao < atual_etapa->capacidade_max && ha_produtos_para_entrar_etapa(atual_etapa, s))
         {
-            pegar_produto_etapa(atual_etapa);
+            pegar_produto_etapa(atual_etapa, s->fila_entrada);
         }
         atividade *atual_atividade = atual_etapa->primeira_atividade;
         while (atual_atividade) // para cada atividade da etapa (qualquer ordem):
@@ -852,32 +904,25 @@ void entradas()
         atual_etapa = atual_etapa->etapa_anterior; // percorre as etapas em ordem reversa
     }
 }
-void popular(int vazao, int qtd)
+void popular(simulacao *s)
 {
 
-    for (int i = 0; i < vazao; i++) // cria v produtos por tick, no momento vazao precisa ser um inteiro igual ou maior 1
+    for (int i = 0; i < s->vazao; i++) // cria v produtos por tick, no momento vazao precisa ser um inteiro igual ou maior 1
     {
-        if (criados >= qtd)
+        if (s->produtos_criados >= s->n_produtos_total)
         {
             return;
         }
-        criar_produto(&fila_entrada);
+        criar_produto(s);
     }
 }
 
-void simular(int max_ticks)
+void simular(simulacao *s)
 {
     printf("\n\nQuando em simulacao, pressione 'p' para acessar as opcoes\n");
     Sleep(500);
-    printf("Iniciando simulacao em \n");
-    Sleep(2000);
-    printf("3\n");
-    Sleep(1000);
-    printf("2\n");
-    Sleep(1000);
-    printf("1\n");
-    Sleep(1000);
-    if (MODO_MANUAL)
+    contagem_regressiva("Iniciando simulacao em");
+    if (s->MODO_MANUAL)
     {
         printf("Modo manual ativado, pressione 'E' para iniciar a simulacao \n");
         while (1)
@@ -892,7 +937,7 @@ void simular(int max_ticks)
     }
 
     int tick = 0;
-    while (tick < max_ticks)
+    while (tick < s->max_ticks)
     {
         tick++;
         printf("\nTick %d\n", tick);
@@ -901,16 +946,16 @@ void simular(int max_ticks)
             char c = _getch(); 
             if (c == 'p' || c == 'P')
             {             // Se for 'p' ou 'P', pausa e exibe as opções
-                opcoes(); // posteriormente implementar uma função melhor de exibição da situação atual do programa
+                opcoes(s); // posteriormente implementar uma função melhor de exibição da situação atual do programa
             }
             
         }
 
         // popula a fila de entrada com novos produtos
         printf("fase de populacao da fila de entrada\n");
-        popular(2, 5); // Exemplo arbitrário: 1 produto por tick, até n produtos
+        popular(s); 
 
-        if (linha_vazia())
+        if (linha_vazia(s))
         {
             printf("Linha de producao vazia, encerrando simulacao\n");
             break;
@@ -918,17 +963,17 @@ void simular(int max_ticks)
 
         // decrementa o tempo restante de todos os produtos em execução
         printf("fase de envelhecimento dos produtos\n");
-        envelhecer_produtos();
+        envelhecer_produtos(s);
 
         // resolve as saidas de todos os produtos que terminaram de ser processados
         printf("fase de saida dos produtos\n");
-        saidas();
+        saidas(s);
 
         // admite em execução todos os produtos que puderem entrar, tanto nas atividades quanto nas etapas
         printf("fase de entrada dos produtos\n");
-        entradas();
+        entradas(s);
 
-        if (MODO_MANUAL)
+        if (s->MODO_MANUAL)
         {
             printf("Pressione 'E' para continuar para o proximo tick ou 'P' para acessar as opcoes \n");
 
@@ -941,7 +986,7 @@ void simular(int max_ticks)
                 }
                 if (c == 'p' || c == 'P')
                 {             // Se for 'p' ou 'P', pausa e exibe as opções
-                    opcoes(); // posteriormente implementar uma função melhor de exibição da situação atual do programa
+                    opcoes(s); // posteriormente implementar uma função melhor de exibição da situação atual do programa
                     break;
                 }
             }
@@ -953,17 +998,19 @@ void simular(int max_ticks)
 int main()
 {
     srand(time(NULL));
+    simulacao s;
+    inicializar_simulacao(&s);
     printf("Modo manual(1) ou automatico(0)?\n");
-    scanf("%d", &MODO_MANUAL);
+    scanf("%d", &s.MODO_MANUAL);
 
-    criar_etapa(&g_e);
-    criar_etapa(&g_e);
-    criar_etapa(&g_e);
+    criar_etapa(&s);
+    criar_etapa(&s);
+    criar_etapa(&s);
 
-    simular(100);
-    mostrar_etapas(g_e);
-    mostrar_pilha(concluidos);
-    mostrar_pilha(lixo);
+    simular(&s);
 
-    encerrar_simulacao();
+    mostrar_pilha(s.concluidos, &s);
+    mostrar_pilha(s.lixo, &s);
+
+    encerrar_simulacao(&s);
 }
