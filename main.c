@@ -5,9 +5,10 @@
 
 int main()
 {
-    //srand(time(NULL));
     simulacao s;
     inicializar_simulacao(&s);
+    srand(s.semente);
+    
     printf("Modo manual(1) ou automatico(0)?\n");
     scanf("%d", &s.MODO_MANUAL);
 
