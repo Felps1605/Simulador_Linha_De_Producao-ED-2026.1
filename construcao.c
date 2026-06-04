@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #include "structs.h"
 #include "construcao.h"
@@ -19,10 +20,10 @@ void inicializar_simulacao(simulacao *s)
     s->MODO_MANUAL = 0; // inicia em modo manual, pode ser alterado depois
 
 
-    s->vazao = 1;
-    s->n_produtos_total = 10; //parte arbitrária por enquanto
-    s->max_ticks = 100;
-    s->semente = time(NULL); //se for inserida uma semente ela deve ser utilizada.
+    s->vazao = 2;
+    s->n_produtos_total = 20; //parte arbitrária por enquanto
+    s->max_ticks = 100000;
+    s->semente = time(NULL); // semente aleatoria baseada no tempo atual, se houver entrada de semente no arquivo deve ser substituida
 }
 void criar_slots(atividade *a)
 {
@@ -53,7 +54,7 @@ void criar_atividade(etapa *dona, int indice, int capacidade)
     nova->qtd_uf = 1; // quantidade de unidades funcionais, arbitraria, pode ser alterada depois
     nova->capacidade_max = capacidade * nova->qtd_uf; // capacidade arbitraria, pode ser alterada depois
     nova->ocupacao = 0;
-    nova->tempo_de_processamento = 2;
+    nova->tempo_de_processamento = 5;
     nova->failrate = 0.1; // taxa de falha arbitraria, pode ser alterada depois
     nova->f = NULL;
     nova->proxima_atividade = NULL;
@@ -86,6 +87,9 @@ void criar_etapa(simulacao *s)
     nova->proxima_etapa = NULL;
     nova->ocupacao = 0;
     nova->capacidade_max = 0;
+    nova->qtd_produtos_concluidos = 0;
+    nova->qtd_produtos_entraram =0;
+    nova->falhas = 0;
 
     if (s->linha == NULL)
     {
@@ -117,8 +121,8 @@ void criar_etapa(simulacao *s)
     nova->f->em_fila = 0;
 
     printf("Etapa %d criada, criando atividades\n", nova->id);
-    int num_atividades = 2; // arbitrario
-    for (int i = 1; i <= num_atividades; i++)
+    nova->num_atividades = 3; // arbitrario
+    for (int i = 1; i <= nova->num_atividades; i++)
     {
         int catividade = 2;
         criar_atividade(nova, i, catividade);

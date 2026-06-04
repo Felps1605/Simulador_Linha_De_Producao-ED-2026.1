@@ -6,10 +6,12 @@
 #include "structs.h"
 #include "execucao.h"
 
+
 //funções usadas durante a execução
 
 void enfileirar(produto *p, fila **f)
-{
+{   
+    
     if (*f == NULL)
     {
         printf("Criando fila de entrada\n");
@@ -32,6 +34,7 @@ void enfileirar(produto *p, fila **f)
     }
     (*f)->fim->proximo_produto = p;
     (*f)->fim = p;
+    
 }
 void empilhar(produto *p, pilha **pp)
 {
@@ -70,10 +73,15 @@ void criar_produto(simulacao *s)
     novo->proximo_produto = NULL;
     novo->atividade_atual = NULL;
     novo->etapa_atual = NULL;
-    enfileirar(novo, &s->fila_entrada); // adiciona o produto na fila de entrada, que pode ser passada como argumento ou ser um ponteiro global, ou algo do tipo
+    enfileirar(novo, &s->fila_entrada);
     novo->id = s->produto_id;
     novo->defeituoso = 0;
     novo->falhas = 0;
+
+    novo->historico_etapas = NULL;
+    novo->evento_atual_etapa = NULL;
+    
+    novo->tick_criacao = s->tick_atual;
 
     s->produto_id++;
     s->produtos_criados++;
@@ -129,12 +137,14 @@ void mostrar_pilha(pilha *p, simulacao *s)
 
 void falhar_produto(produto *p, float failrate)
 {
-    // implementar verificação de falha, usando a taxa de falha da atividade, ou seja, gerar um número aleatório e comparar com a taxa de falha para determinar se o produto falhou ou não
     float r = (float)rand() / RAND_MAX; // gera um número aleatório entre 0 e 1
     if (r < failrate)
-    {
+    {   
+        p->evento_atual_etapa->falhou = 1;//mais fácil setar logo doq depois procurar em cada evento atividade pra ver se falhou
+        p->evento_atual_etapa->evento_atual_atividade->falhou = 1;
         p->falhas++;
-        if (r < (failrate / 2 || p->falhas > 3))
+        p->etapa_atual->falhas++;
+        if (r < failrate / 2 || p->falhas > 3)
         { // se for uma falha catastrófica ou se o produto já tiver falhado mais de 3 vezes, considera-se o produto como defeituoso e não tenta consertar mais
             printf("Produto %d teve uma falha catastrófica na atividade %d\n", p->id, p->atividade_atual->id);
             p->defeituoso = 2;
@@ -179,7 +189,7 @@ void mostrar_atividades(atividade *primeira)
 }
 void mostrar_etapas(etapas *e)
 {
-    if (!e || !e->primeira_etapa) // nao ta compilando, verificar depois
+    if (!e || !e->primeira_etapa) 
     {
         printf("Nenhuma etapa criada\n");
         return;
@@ -195,20 +205,15 @@ void mostrar_etapas(etapas *e)
     }
 }
 
-void pegar_produto_etapa(etapa *e, fila *fila_entrada)
-{ // precisa de um ponteiro global pra fila de entrada
-    // se tiver espaço
-
-    if (e->ocupacao >= e->capacidade_max)
-    {
-        printf("Etapa %d cheia\n", e->id);
-        return;
-    }
+void pegar_produto_etapa(etapa *e, simulacao *s)
+{ //só é chamada quando há produto pra ser pego
+    
     produto *p;
     if (e->etapa_anterior)
     {
         printf("Pegando produto da fila de prontos da etapa anterior\n");
-        p = desenfileirar(e->etapa_anterior->f); // pega o primeiro produto da fila de prontos da etapa anterior, se tiver
+        p = desenfileirar(e->etapa_anterior->f); // pega o primeiro produto da fila de prontos da etapa anterior
+        p->evento_atual_etapa->tick_fim = s->tick_atual;
         if (p)
         {
             e->etapa_anterior->ocupacao--;
@@ -217,64 +222,61 @@ void pegar_produto_etapa(etapa *e, fila *fila_entrada)
     else
     {
         printf("Primeira etapa, pegando produto da fila de entrada\n");
-        p = desenfileirar(fila_entrada); // pega o primeiro produto da fila de entrada, se tiver
+        p = desenfileirar(s->fila_entrada); // pega o primeiro produto da fila de entrada
+        p->tick_entrada_linha = s->tick_atual;//não segfaulta pq a função só é chamada se tiver produto pra entrar
     }
-    if (!p)
+    if (!p)//verificação redundante 
     {
         printf("Nenhum produto disponível para pegar na etapa %d\n", e->id);
         return;
     }
     atividade *a = e->primeira_atividade;
     enfileirar(p, &a->f); // coloca o produto na fila de entrada da primeira atividade da etapa
-    p->etapa_atual = e;
     p->atividade_atual = a;
+    p->etapa_atual = e;
     e->ocupacao++;
-
+    e->qtd_produtos_entraram++;
     printf("Produto %d entrou na fila de entrada da Atividade %d\n", p->id, a->id);
+    registrar_inicio_etapa(p, s);
 }
-void pegar_produto_atividade(atividade *a)
-{
-
-    if (a->ocupacao >= a->capacidade_max)
-    {
-        printf("Atividade %d cheia, nao e possivel pegar produto\n", a->id);
-        return;
-    }
+void pegar_produto_atividade(atividade *a, simulacao *sim)
+{//só é chamada quando há produto pra ser pego
+    
     produto *p = desenfileirar(a->f); // pega o primeiro produto da fila de entrada da atividade
-    if (p)
+    for (int i = 0; i < a->capacidade_max; i++)
     {
-        for (int i = 0; i < a->capacidade_max; i++)
+        if (!a->slots[i].p)//bota o produto no primeiro slot vazio
         {
-            if (!a->slots[i].p)
-            {
-                a->slots[i].p = p;
-                a->slots[i].tempo_restante = a->tempo_de_processamento; // tempo de processamento da atividade, pode ser alterado depois
-                a->ocupacao++;
-                p->atividade_atual = a;
-                printf("Produto %d saiu da fila de entrada e entrou no slot %d da Atividade %d\n", p->id, i, a->id);
-                break;
-            }
-        }
-
-        return;
+            a->slots[i].p = p;
+            a->slots[i].tempo_restante = a->tempo_de_processamento; // tempo de processamento da atividade, pode ser alterado depois
+            a->ocupacao++;
+            p->atividade_atual = a;
+            p->evento_atual_etapa->evento_atual_atividade->tick_inicio_processamento = sim->tick_atual;
+            printf("Produto %d saiu da fila de entrada e entrou no slot %d da Atividade %d\n", p->id, i, a->id);
+            break;
+            
+        };
     }
-
-    printf("Nenhum produto disponivel para pegar na atividade %d\n", a->id);
 }
 int verificar_defeitos(produto *p, simulacao *s)
 {
     if (p->defeituoso)
     {
+        etapa *e = p->atividade_atual->etapa_dona;
         if (p->defeituoso == 2)
         {
-            printf("Produto %d processado com falha catastrofica e direcionado a pilha de\n", p->id);
+            printf("Produto %d processado com falha catastrofica e direcionado a pilha de lixo\n", p->id);
             empilhar(p, &s->lixo);
-            p->atividade_atual->etapa_dona->ocupacao--;
+            p->tick_saida_linha = -1 * (s->tick_atual);
+            p->evento_atual_etapa->tick_fim = -1 * (s->tick_atual);
+            e->ocupacao--;
             return 1;
         }
         printf("Produto %d processado com falha recuperável, redirecionado para o começo da etapa %d\n", p->id, p->atividade_atual->etapa_dona->id);
         p->defeituoso = 0;
-        enfileirar(p, &(p->atividade_atual->etapa_dona->primeira_atividade->f)); // coloca o produto de volta na fila de entrada da primeira atividade da etapa, para tentar consertar o produto
+        enfileirar(p, &(e->primeira_atividade->f)); 
+        p->atividade_atual = e->primeira_atividade;
+        registrar_inicio_etapa(p, s);
         return 1;
     }
     return 0;
@@ -288,11 +290,15 @@ void avancar_produto(atividade *a, produto *p, simulacao *s)
     
     if (a->proxima_atividade)
     {
-        enfileirar(p, &a->proxima_atividade->f); // coloca o produto na fila de entrada da proxima atividade,
+        enfileirar(p, &a->proxima_atividade->f); // coloca o produto na fila de entrada da proxima atividade
         printf("Produto %d colocado na fila de entrada da proxima atividade (%d)\n", p->id, a->proxima_atividade->id);
+        p->atividade_atual = a->proxima_atividade;
+        registrar_inicio_atividade(p, s);
         return;
     }
     printf("Produto %d concluiu a ultima atividade da etapa %d\n", p->id, a->etapa_dona->id);
+    p->etapa_atual->qtd_produtos_concluidos++;
+    p->evento_atual_etapa->tick_conclusao = s->tick_atual;//vai pra fila de prontos ou pra pilha de concluido
     if (a->etapa_dona->proxima_etapa)
     {
         printf("Enfileirando produto %d na fila de prontos da etapa\n", p->id);
@@ -300,36 +306,31 @@ void avancar_produto(atividade *a, produto *p, simulacao *s)
         return;
     }
     printf("Produto %d concluiu a ultima etapa do processo\n", p->id);
+    p->evento_atual_etapa->tick_fim = s->tick_atual;
     empilhar(p, &s->concluidos);
+    p->etapa_atual = NULL;
+    p->atividade_atual = NULL;
+    p->tick_saida_linha = s->tick_atual;
     a->etapa_dona->ocupacao--;
     return;
 }
 void atualizar_atividade(atividade *a, simulacao *sim)
 { // atualiza todos os produtos da atividade
-    // depois refatorar para legibilidade
 
     for (int i = 0; i < a->capacidade_max; i++)
     { // olha cada slot
         slot *s = &a->slots[i];
         if (s->p)
         { // se tiver produto no slot
-            // s->tempo_restante--; recebeu função própria
             if (s->tempo_restante <= 0) // se o produto terminou de ser processado
             {
                 produto *p = s->p;
+                p->evento_atual_etapa->evento_atual_atividade->tick_fim_processamento = sim->tick_atual;
                 printf("Slot %d: Produto %d terminou de ser processado na Atividade %d\n", i, p->id, a->id);
-                falhar_produto(p, a->failrate); // verifica se o produto falhou
+                falhar_produto(p, a->failrate); // joga os dados para falhar o produto
                 avancar_produto(a, p, sim);
-                a->slots[i].p = NULL; // melhorar legibilidade disso depois
+                a->slots[i].p = NULL; 
             }
-            /*else
-            {
-                printf("Slot %d: Produto em execucao \n", i);
-            }
-        }
-        else
-        {
-            printf("slot %d: vazio \n", i);*/
         }
     }
 }
@@ -629,14 +630,15 @@ void entradas(simulacao *s)
     {
         while (atual_etapa->ocupacao < atual_etapa->capacidade_max && ha_produtos_para_entrar_etapa(atual_etapa, s))
         {
-            pegar_produto_etapa(atual_etapa, s->fila_entrada);
+            pegar_produto_etapa(atual_etapa, s);
         }
         atividade *atual_atividade = atual_etapa->primeira_atividade;
         while (atual_atividade) // para cada atividade da etapa (qualquer ordem):
         {
             while (atual_atividade->ocupacao < atual_atividade->capacidade_max && ha_produtos_para_entrar_atividade(atual_atividade))
-            {
-                pegar_produto_atividade(atual_atividade);
+            {   
+                pegar_produto_atividade(atual_atividade, s);
+                
             }
             atual_atividade = atual_atividade->proxima_atividade;
         }
@@ -675,11 +677,11 @@ void simular(simulacao *s)
         }
     }
 
-    int tick = 0;
-    while (tick < s->max_ticks)
+    s->tick_atual = 0;
+    while (s->tick_atual < s->max_ticks)
     {
-        tick++;
-        printf("\nTick %d\n", tick);
+        s->tick_atual++;
+        printf("\nTick %d\n", s->tick_atual);
         if (_kbhit())
         {                      // Verifica se uma tecla foi pressionada
             char c = _getch(); 
@@ -707,10 +709,10 @@ void simular(simulacao *s)
         // resolve as saidas de todos os produtos que terminaram de ser processados
         printf("fase de saida dos produtos\n");
         saidas(s);
-
         // admite em execução todos os produtos que puderem entrar, tanto nas atividades quanto nas etapas
         printf("fase de entrada dos produtos\n");
         entradas(s);
+        
 
         if (s->MODO_MANUAL)
         {
@@ -731,5 +733,71 @@ void simular(simulacao *s)
             }
         }else
             Sleep(10); // periodo do clock em milisegundos, pode ser alterado depois
+    }
+}
+
+void registrar_inicio_etapa(produto *p, simulacao *s)
+{
+    evento_etapa *evento = malloc(sizeof(evento_etapa));
+    if (!evento)
+    {
+        printf("\n\nErro ao alocar memória! \n\n");
+        exit(1);
+    }
+    evento->e = p->etapa_atual;
+    evento->tick_inicio = s->tick_atual;
+    evento->falhou = 0;
+    evento->tentativa = 1;
+    evento->proximo_evento = NULL;
+    
+    evento->tick_conclusao = -1;
+    evento->tick_fim = -1; //valores negativos só pra poder perceber quando não forem atualizado
+    evento->historico_atividades = NULL;
+    evento->evento_atual_atividade = NULL;
+    
+    //inserir na lista e atualizar ponteiros do produto
+    if (!p->historico_etapas)
+    {
+        p->historico_etapas = evento;
+        p->evento_atual_etapa = evento;
+    }
+    else
+    {
+        if(p->evento_atual_etapa->falhou)//como evento_atual_etapa não foi atualizado, ainda aponta pro evento_etapa anterior/último.
+            evento->tentativa = p->evento_atual_etapa->tentativa + 1;
+        p->evento_atual_etapa->proximo_evento = evento;
+        p->evento_atual_etapa = evento;
+    }
+
+    registrar_inicio_atividade(p, s);
+  
+}
+void registrar_inicio_atividade(produto *p, simulacao *s)
+{
+    evento_atividade *evento = malloc(sizeof(evento_atividade));
+    if (!evento)
+    {
+        printf("\n\nErro ao alocar memória! \n\n");
+        exit(1);
+    }
+    evento->a = p->atividade_atual;
+    evento->falhou = 0;
+    evento->tick_fila = s->tick_atual;
+    evento->tick_inicio_processamento = -1;
+    evento->tick_fim_processamento = -1;
+
+    evento->proximo_evento = NULL;
+
+    //inserir na lista e atualizar ponteiros do produto
+    evento_etapa *atual_etapa = p->evento_atual_etapa;
+    if (!atual_etapa->historico_atividades)
+    {
+      atual_etapa->historico_atividades = evento;
+        atual_etapa->evento_atual_atividade = evento;
+    }
+    else
+    {
+        atual_etapa->evento_atual_atividade->proximo_evento = evento;
+        atual_etapa->evento_atual_atividade = evento;
     }
 }

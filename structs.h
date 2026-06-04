@@ -9,7 +9,8 @@ typedef struct etapas etapas;
 typedef struct slot slot;
 typedef struct pilha pilha;
 typedef struct simulacao simulacao;
-typedef struct evento evento;
+typedef struct evento_atividade evento_atividade;
+typedef struct evento_etapa evento_etapa;
 
 
 struct simulacao{
@@ -32,6 +33,9 @@ struct simulacao{
     int    produto_id;
     int    etapa_id;
     int    MODO_MANUAL;
+    int    tempo_total_espera_produtos;
+    //com a soma de todos os tempos de espera de cada um dos produtos é só dividir pelo
+    // n de produtos concluidos para ter o tempo medio de espera
 
     // Estruturas
     etapas * linha;         
@@ -42,6 +46,7 @@ struct simulacao{
     //NoBST*           bst_concluidos  (ponteiro pra raiz)
 
 };
+
 struct etapa{
     int id;
     char nome[50];
@@ -55,8 +60,14 @@ struct etapa{
     atividade * primeira_atividade;
     atividade * ultima_atividade;
 
-    fila * f; //fila de prontos da etapa, onde os produtos ficam esperando para entrar na próxima etapa
+    fila * f; //fila de prontos da etapa
+
+    int falhas;
+    int qtd_produtos_concluidos;//incrementar quando um produto sai
+    int qtd_produtos_entraram;//incrementar quando um produto entra
+    
 };
+
 struct atividade{
     int id;
     char nome[50];
@@ -88,35 +99,54 @@ struct produto{
     produto *proximo_produto;
     
     
-    int tick_criacao; //concepção
-    int tick_entrada_linha; //entrada na linha de produção
-    int tick_saida_linha; //saída da linha de produção
+    int tick_criacao; 
+    int tick_entrada_linha; 
+    int tick_saida_linha; 
     //tempo total implicito: tick_saida_linha - tick_criacao, não precisa ser armazenado
+     
+    //int tempo_total_em_espera;//somatoria dos tempos de espera totais de cada etapa e na fila inicial
+    //também é possivel calcular o tempo total em espera subtraindo o tempo total real do tempo total mínimo
     
-    int tempo_de_espera;
-    
-    int tick_termino_atividade_atual; //redundante, mas facilita o controle de tempo
-    
-    int tentativa_atual;
 
-    evento * historico;
-    evento * atual;
+    evento_etapa * historico_etapas;//primeiro da lista/fila
+    evento_etapa * evento_atual_etapa;//ultimo da lista/fila
 };
 
-
-
-struct evento{
-    int id;
-    //char descricao[100];?
-    int etapa_id;
-    int atividade_id;
-    int tentativa; //contador
-    int falhou; //flag
-    int tick_fila; //tick em que o produto entrou na fila para essa atividade,
-    int tick_inicio_processamento; //tick em que o produto começou a ser processado nessa atividade, ou seja, quando ele entrou no slot
-    int tick_fim_processamento; //tick em que o produto terminou de ser processado nessa atividade, ou seja, quando ele saiu do slot
+struct evento_atividade{
     
-    evento * proximo_evento;
+    atividade * a;
+    int falhou; 
+    int tick_fila; //tick em que o produto entrou na fila para essa atividade 
+    int tick_inicio_processamento; //tick em que o produto começou a ser processado nessa atividade 
+    int tick_fim_processamento; //tick em que o produto terminou de ser processado nessa atividade
+    //usar para calcular:
+    //tempo total na atividade
+    //tempo na fila
+
+    evento_atividade * proximo_evento;
+};
+
+struct evento_etapa{
+    
+    etapa * e;
+    int tentativa; //contador 
+    int falhou; //flag 
+    
+    int tick_inicio; //tick em que o produto entrou na etapa
+    int tick_conclusao;//tick em que o produto foi pra fila de prontos
+    int tick_fim; //tick em que o produto saiu da etapa
+    
+    //usar para calcular:
+    //tempo total na etapa
+    //tempo total na fila de prontos da etapa
+    
+
+    evento_etapa * proximo_evento;
+
+    evento_atividade * historico_atividades;//primeiro da lista/fila
+    evento_atividade * evento_atual_atividade;//ultimo da lista/fila
+
+    //calcular somatoria de todos os tempos de espera na etapa.(filas de atividades + fila de prontos)
 };
 
 struct fila

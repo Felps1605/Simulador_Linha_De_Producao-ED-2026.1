@@ -22,9 +22,9 @@ void mostrar_atividades(atividade *primeira);
 
 void mostrar_etapas(etapas *e);
 
-void pegar_produto_etapa(etapa *e, fila *fila_entrada);
+void pegar_produto_etapa(etapa *e, simulacao *s);
 
-void pegar_produto_atividade(atividade *a);
+void pegar_produto_atividade(atividade *a, simulacao *sim);
 
 int verificar_defeitos(produto *p, simulacao *s);
 
@@ -69,5 +69,12 @@ void entradas(simulacao *s);
 void popular(simulacao *s);
 
 void simular(simulacao *s);
+
+
+
+
+void registrar_inicio_etapa(produto *p, simulacao *s);
+
+void registrar_inicio_atividade(produto *p, simulacao *s);
 
 #endif
