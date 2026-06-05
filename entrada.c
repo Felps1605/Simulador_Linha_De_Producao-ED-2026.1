@@ -3,63 +3,81 @@
 #include <string.h>
 #include "entrada.h"
 
-etapa* criarEtapa(int id, char *nome, int capacidade_max) {
-    etapa *nova = malloc(sizeof(etapa));
-    if (!nova) { printf("Erro: falha ao alocar memória para etapa.\n"); exit(1); }
-    nova->id = id;
-    strcpy(nova->nome, nome);
-    nova->capacidade_max = capacidade_max;
-    nova->ocupacao = 0;
-    nova->primeira_atividade = NULL;
-    nova->ultima_atividade = NULL;
-    nova->proxima_etapa = NULL;
-    nova->etapa_anterior = NULL;
-    nova->f = NULL;
-    nova->falhas = 0;
-    nova->qtd_produtos_concluidos = 0;
-    nova->qtd_produtos_entraram = 0;
-    return nova;
+void criar_slots(atividade *a) {
+    a->slots = malloc(sizeof(slot) * a->capacidade_max);
+    if (!a->slots) { printf("Erro ao alocar memória!\n"); exit(1); }
+    for (int i = 0; i < a->capacidade_max; i++) {
+        a->slots[i].p = NULL;
+        a->slots[i].tempo_restante = 0;
+    }
 }
 
-atividade* criarAtividade(int id, char *nome, int tempo, float failrate, int qtd_uf) {
+atividade* criar_atividade(etapa *dona, int id, char *nome, int tempo, float failrate, int qtd_uf) {
+    if (id < 0 || tempo <= 0 || failrate < 0.0 || failrate > 1.0 || qtd_uf <= 0) {
+        printf("Erro: dados inválidos na ATIVIDADE %d.\n", id);
+        exit(1);
+    }
+
     atividade *nova = malloc(sizeof(atividade));
-    if (!nova) { printf("Erro: falha ao alocar memória para atividade.\n"); exit(1); }
+    if (!nova) { printf("Erro ao alocar memória!\n"); exit(1); }
     nova->id = id;
     strcpy(nova->nome, nome);
-    nova->tempo_de_processamento = tempo;
-    nova->failrate = failrate;
+    nova->etapa_dona = dona;
     nova->qtd_uf = qtd_uf;
     nova->capacidade_max = qtd_uf;
     nova->ocupacao = 0;
-    nova->slots = NULL;
-    nova->proxima_atividade = NULL;
+    nova->tempo_de_processamento = tempo;
+    nova->failrate = failrate;
     nova->f = NULL;
+    nova->proxima_atividade = NULL;
+    criar_slots(nova);
+
+    if (dona->primeira_atividade == NULL) dona->primeira_atividade = nova;
+    else dona->ultima_atividade->proxima_atividade = nova;
+    dona->ultima_atividade = nova;
+
     return nova;
 }
 
-void adicionarAtividade(etapa *e, atividade *a) {
-    if (e->primeira_atividade == NULL) {
-        e->primeira_atividade = a;
-        e->ultima_atividade = a;
-    } else {
-        e->ultima_atividade->proxima_atividade = a;
-        e->ultima_atividade = a;
+etapa* criar_etapa(simulacao *s, int id, char *nome, int capacidade, int qtdAtividades) {
+    if (id < 0 || capacidade < 0 || qtdAtividades <= 0) {
+        printf("Erro: dados inválidos na ETAPA %d.\n", id);
+        exit(1);
     }
-    a->etapa_dona = e;
+
+    etapa *nova = malloc(sizeof(etapa));
+    if (!nova) { printf("Erro ao alocar memória!\n"); exit(1); }
+    nova->id = id;
+    strcpy(nova->nome, nome);
+    nova->num_atividades = qtdAtividades;
+    nova->primeira_atividade = NULL;
+    nova->ultima_atividade = NULL;
+    nova->proxima_etapa = NULL;
+    nova->ocupacao = 0;
+    nova->capacidade_max = capacidade;
+    nova->qtd_produtos_concluidos = 0;
+    nova->qtd_produtos_entraram = 0;
+    nova->falhas = 0;
+
+    if (s->linha == NULL) {
+        s->linha = malloc(sizeof(etapas));
+        s->linha->primeira_etapa = nova;
+        nova->etapa_anterior = NULL;
+    } else {
+        s->linha->ultima_etapa->proxima_etapa = nova;
+        nova->etapa_anterior = s->linha->ultima_etapa;
+    }
+    s->linha->ultima_etapa = nova;
+
+    nova->f = malloc(sizeof(fila));
+    nova->f->inicio = NULL;
+    nova->f->fim = NULL;
+    nova->f->em_fila = 0;
+
+    return nova;
 }
 
-void adicionarEtapa(etapas *linha, etapa *e) {
-    if (linha->primeira_etapa == NULL) {
-        linha->primeira_etapa = e;
-        linha->ultima_etapa = e;
-    } else {
-        linha->ultima_etapa->proxima_etapa = e;
-        e->etapa_anterior = linha->ultima_etapa;
-        linha->ultima_etapa = e;
-    }
-}
-
-void lerEntrada(FILE *arquivo, simulacao *sim) {
+void lerEntrada(simulacao *s, FILE *arquivo) {
     char linha[200];
 
     // Ignora primeira linha
@@ -70,29 +88,25 @@ void lerEntrada(FILE *arquivo, simulacao *sim) {
 
     // SIMULACAO
     if (!fgets(linha, sizeof(linha), arquivo) ||
-        sscanf(linha, "SIMULACAO %99s %d %d", sim->nome_cenario, &sim->semente, &sim->max_ticks) != 3) {
+        sscanf(linha, "SIMULACAO %99s %d %d", s->nome_cenario, &s->semente, &s->max_ticks) != 3) {
         printf("Erro: linha SIMULACAO inválida.\n");
         exit(1);
     }
-    if (sim->semente < 0 || sim->max_ticks <= 0) {
+    if (s->semente < 0 || s->max_ticks <= 0) {
         printf("Erro: valores inválidos em SIMULACAO.\n");
         exit(1);
     }
 
     // PRODUTOS
     if (!fgets(linha, sizeof(linha), arquivo) ||
-        sscanf(linha, "PRODUTOS %d %d %99s", &sim->n_produtos_total, &sim->vazao, sim->modelo_produto) != 3) {
+        sscanf(linha, "PRODUTOS %d %d %99s", &s->n_produtos_total, &s->vazao, s->modelo_produto) != 3) {
         printf("Erro: linha PRODUTOS inválida.\n");
         exit(1);
     }
-    if (sim->n_produtos_total <= 0 || sim->vazao <= 0) {
+    if (s->n_produtos_total <= 0 || s->vazao <= 0) {
         printf("Erro: valores inválidos em PRODUTOS.\n");
         exit(1);
     }
-
-    sim->linha = malloc(sizeof(etapas));
-    sim->linha->primeira_etapa = NULL;
-    sim->linha->ultima_etapa = NULL;
 
     // LINHA_PRODUCAO
     int qtdEtapas;
@@ -117,8 +131,9 @@ void lerEntrada(FILE *arquivo, simulacao *sim) {
             exit(1);
         }
 
-        etapa *e = criarEtapa(id, nomeEtapa, capacidade);
+        etapa *e = criar_etapa(s, id, nomeEtapa, capacidade, qtdAtividades);
 
+        // Agora usamos qtdAtividades para criar o loop
         for (int j = 0; j < qtdAtividades; j++) {
             int idA, tempo, qtdUF;
             float taxaFalhaA;
@@ -129,15 +144,8 @@ void lerEntrada(FILE *arquivo, simulacao *sim) {
                 printf("Erro: linha ATIVIDADE inválida.\n");
                 exit(1);
             }
-            if (idA < 0 || tempo <= 0 || taxaFalhaA < 0.0 || taxaFalhaA > 1.0 || qtdUF <= 0) {
-                printf("Erro: dados inválidos na ATIVIDADE %d.\n", idA);
-                exit(1);
-            }
 
-            atividade *a = criarAtividade(idA, nomeAtividade, tempo, taxaFalhaA, qtdUF);
-            adicionarAtividade(e, a);
+            criar_atividade(e, idA, nomeAtividade, tempo, taxaFalhaA, qtdUF);
         }
-
-        adicionarEtapa(sim->linha, e);
     }
 }
