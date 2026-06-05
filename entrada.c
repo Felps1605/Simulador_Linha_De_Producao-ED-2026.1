@@ -1,8 +1,28 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>     // necessário para usar time()
 #include "entrada.h"
 
+// Função para inicializar a simulação com valores padrão
+void inicializar_simulacao(simulacao *s) {
+    s->fila_entrada = NULL;
+    s->lixo = NULL;
+    s->concluidos = NULL;
+    s->linha = NULL;
+    s->produto_id = 1;
+    s->etapa_id = 1;
+    s->produtos_criados = 0;
+    s->MODO_MANUAL = 0; // inicia em modo manual
+
+    // Valores padrão (podem ser sobrescritos pelo arquivo)
+    s->vazao = 2;
+    s->n_produtos_total = 20;
+    s->max_ticks = 100000;
+    s->semente = time(NULL); // semente aleatória baseada no tempo atual
+}
+
+// Funções auxiliares
 void criar_slots(atividade *a) {
     a->slots = malloc(sizeof(slot) * a->capacidade_max);
     if (!a->slots) { printf("Erro ao alocar memória!\n"); exit(1); }
@@ -77,8 +97,12 @@ etapa* criar_etapa(simulacao *s, int id, char *nome, int capacidade, int qtdAtiv
     return nova;
 }
 
+// Função principal de leitura do arquivo
 void lerEntrada(simulacao *s, FILE *arquivo) {
     char linha[200];
+
+    // Primeiro inicializa a simulação com valores padrão
+    inicializar_simulacao(s);
 
     // Ignora primeira linha
     if (!fgets(linha, sizeof(linha), arquivo)) {
@@ -133,7 +157,6 @@ void lerEntrada(simulacao *s, FILE *arquivo) {
 
         etapa *e = criar_etapa(s, id, nomeEtapa, capacidade, qtdAtividades);
 
-        // Agora usamos qtdAtividades para criar o loop
         for (int j = 0; j < qtdAtividades; j++) {
             int idA, tempo, qtdUF;
             float taxaFalhaA;
