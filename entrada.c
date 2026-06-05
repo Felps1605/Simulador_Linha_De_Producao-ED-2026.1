@@ -1,13 +1,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "struct.h"
-
-// ---------------------- Funções auxiliares ----------------------
+#include "entrada.h"
 
 etapa* criarEtapa(int id, char *nome, int capacidade_max) {
     etapa *nova = malloc(sizeof(etapa));
-    if (!nova) { printf("Erro ao alocar memória para etapa.\n"); exit(1); }
+    if (!nova) { printf("Erro: falha ao alocar memória para etapa.\n"); exit(1); }
     nova->id = id;
     strcpy(nova->nome, nome);
     nova->capacidade_max = capacidade_max;
@@ -25,13 +23,13 @@ etapa* criarEtapa(int id, char *nome, int capacidade_max) {
 
 atividade* criarAtividade(int id, char *nome, int tempo, float failrate, int qtd_uf) {
     atividade *nova = malloc(sizeof(atividade));
-    if (!nova) { printf("Erro ao alocar memória para atividade.\n"); exit(1); }
+    if (!nova) { printf("Erro: falha ao alocar memória para atividade.\n"); exit(1); }
     nova->id = id;
     strcpy(nova->nome, nome);
     nova->tempo_de_processamento = tempo;
     nova->failrate = failrate;
     nova->qtd_uf = qtd_uf;
-    nova->capacidade_max = qtd_uf; // simplificação
+    nova->capacidade_max = qtd_uf;
     nova->ocupacao = 0;
     nova->slots = NULL;
     nova->proxima_atividade = NULL;
@@ -61,39 +59,63 @@ void adicionarEtapa(etapas *linha, etapa *e) {
     }
 }
 
-// ---------------------- Leitura do arquivo ----------------------
-
-void lerSimulacao(FILE *arquivo, simulacao *sim) {
+void lerEntrada(FILE *arquivo, simulacao *sim) {
     char linha[200];
-    fgets(linha, sizeof(linha), arquivo); // ignora primeira linha
-    fgets(linha, sizeof(linha), arquivo);
-    sscanf(linha, "SIMULACAO %99s %d %d", sim->nome_cenario, &sim->semente, &sim->max_ticks);
 
-    fgets(linha, sizeof(linha), arquivo);
-    sscanf(linha, "PRODUTOS %d %d %99s", &sim->n_produtos_total, &sim->vazao, sim->modelo_produto);
+    // Ignora primeira linha
+    if (!fgets(linha, sizeof(linha), arquivo)) {
+        printf("Erro: arquivo vazio.\n");
+        exit(1);
+    }
 
-    sim->tick_atual = 0;
-    sim->produtos_criados = 0;
-    sim->produtos_concluidos = 0;
-    sim->falhas_totais = 0;
+    // SIMULACAO
+    if (!fgets(linha, sizeof(linha), arquivo) ||
+        sscanf(linha, "SIMULACAO %99s %d %d", sim->nome_cenario, &sim->semente, &sim->max_ticks) != 3) {
+        printf("Erro: linha SIMULACAO inválida.\n");
+        exit(1);
+    }
+    if (sim->semente < 0 || sim->max_ticks <= 0) {
+        printf("Erro: valores inválidos em SIMULACAO.\n");
+        exit(1);
+    }
+
+    // PRODUTOS
+    if (!fgets(linha, sizeof(linha), arquivo) ||
+        sscanf(linha, "PRODUTOS %d %d %99s", &sim->n_produtos_total, &sim->vazao, sim->modelo_produto) != 3) {
+        printf("Erro: linha PRODUTOS inválida.\n");
+        exit(1);
+    }
+    if (sim->n_produtos_total <= 0 || sim->vazao <= 0) {
+        printf("Erro: valores inválidos em PRODUTOS.\n");
+        exit(1);
+    }
+
     sim->linha = malloc(sizeof(etapas));
     sim->linha->primeira_etapa = NULL;
     sim->linha->ultima_etapa = NULL;
-}
 
-void lerLinhaProducao(FILE *arquivo, simulacao *sim) {
-    char linha[200];
+    // LINHA_PRODUCAO
     int qtdEtapas;
-    fgets(linha, sizeof(linha), arquivo);
-    sscanf(linha, "LINHA_PRODUCAO %d", &qtdEtapas);
+    if (!fgets(linha, sizeof(linha), arquivo) ||
+        sscanf(linha, "LINHA_PRODUCAO %d", &qtdEtapas) != 1 || qtdEtapas <= 0) {
+        printf("Erro: linha LINHA_PRODUCAO inválida.\n");
+        exit(1);
+    }
 
     for (int i = 0; i < qtdEtapas; i++) {
         int id, qtdAtividades, capacidade;
         float taxaFalha;
         char nomeEtapa[50];
 
-        fgets(linha, sizeof(linha), arquivo);
-        sscanf(linha, "ETAPA %d %d %d %f %49s", &id, &qtdAtividades, &capacidade, &taxaFalha, nomeEtapa);
+        if (!fgets(linha, sizeof(linha), arquivo) ||
+            sscanf(linha, "ETAPA %d %d %d %f %49s", &id, &qtdAtividades, &capacidade, &taxaFalha, nomeEtapa) != 5) {
+            printf("Erro: linha ETAPA inválida.\n");
+            exit(1);
+        }
+        if (id < 0 || capacidade < 0 || taxaFalha < 0.0 || taxaFalha > 1.0 || qtdAtividades <= 0) {
+            printf("Erro: dados inválidos na ETAPA %d.\n", id);
+            exit(1);
+        }
 
         etapa *e = criarEtapa(id, nomeEtapa, capacidade);
 
@@ -102,8 +124,15 @@ void lerLinhaProducao(FILE *arquivo, simulacao *sim) {
             float taxaFalhaA;
             char nomeAtividade[50];
 
-            fgets(linha, sizeof(linha), arquivo);
-            sscanf(linha, "ATIVIDADE %d %d %f %d %49s", &idA, &tempo, &taxaFalhaA, &qtdUF, nomeAtividade);
+            if (!fgets(linha, sizeof(linha), arquivo) ||
+                sscanf(linha, "ATIVIDADE %d %d %f %d %49s", &idA, &tempo, &taxaFalhaA, &qtdUF, nomeAtividade) != 5) {
+                printf("Erro: linha ATIVIDADE inválida.\n");
+                exit(1);
+            }
+            if (idA < 0 || tempo <= 0 || taxaFalhaA < 0.0 || taxaFalhaA > 1.0 || qtdUF <= 0) {
+                printf("Erro: dados inválidos na ATIVIDADE %d.\n", idA);
+                exit(1);
+            }
 
             atividade *a = criarAtividade(idA, nomeAtividade, tempo, taxaFalhaA, qtdUF);
             adicionarAtividade(e, a);
@@ -111,38 +140,4 @@ void lerLinhaProducao(FILE *arquivo, simulacao *sim) {
 
         adicionarEtapa(sim->linha, e);
     }
-}
-
-// ---------------------- Programa principal ----------------------
-
-int main() {
-    FILE *arquivo = fopen("entrada.txt", "r");
-    if (!arquivo) { printf("Erro ao abrir arquivo.\n"); return 1; }
-
-    simulacao *sim = malloc(sizeof(simulacao));
-    if (!sim) { printf("Erro ao alocar memória para simulação.\n"); return 1; }
-
-    lerSimulacao(arquivo, sim);
-    lerLinhaProducao(arquivo, sim);
-
-    fclose(arquivo);
-
-    // Teste: imprimir
-    printf("SIMULACAO: %s\n", sim->nome_cenario);
-    printf("Semente: %d | Max ticks: %d\n", sim->semente, sim->max_ticks);
-    printf("Produtos: %d | Vazao: %d/s | Modelo: %s\n", sim->n_produtos_total, sim->vazao, sim->modelo_produto);
-
-    etapa *e = sim->linha->primeira_etapa;
-    while (e) {
-        printf("\nETAPA %d - %s (Capacidade %d)\n", e->id, e->nome, e->capacidade_max);
-        atividade *a = e->primeira_atividade;
-        while (a) {
-            printf("  ATIVIDADE %d - %s (Tempo %d, Falha %.2f, UF %d)\n",
-                   a->id, a->nome, a->tempo_de_processamento, a->failrate, a->qtd_uf);
-            a = a->proxima_atividade;
-        }
-        e = e->proxima_etapa;
-    }
-
-    return 0;
 }
