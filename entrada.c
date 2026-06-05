@@ -36,6 +36,10 @@ typedef struct Simulacao {
 
 Etapa* criarEtapa(int id, int capacidade, float taxaFalha, char *nome) {
     Etapa *nova = malloc(sizeof(Etapa));
+    if (!nova) {
+        printf("Erro: falha ao alocar memória para Etapa.\n");
+        exit(1);
+    }
     nova->id = id;
     nova->capacidade = capacidade;
     nova->taxaFalhaInicial = taxaFalha;
@@ -48,6 +52,10 @@ Etapa* criarEtapa(int id, int capacidade, float taxaFalha, char *nome) {
 
 Atividade* criarAtividade(int id, int tempo, float taxaFalha, char *nome) {
     Atividade *nova = malloc(sizeof(Atividade));
+    if (!nova) {
+        printf("Erro: falha ao alocar memória para Atividade.\n");
+        exit(1);
+    }
     nova->id = id;
     nova->tempo = tempo;
     nova->taxaFalha = taxaFalha;
@@ -77,6 +85,37 @@ void adicionarEtapa(Simulacao *sim, Etapa *etapa) {
     }
 }
 
+// ---------------------- Funções de validação ----------------------
+
+void validarSimulacao(Simulacao *sim) {
+    if (sim->semente < 0 || sim->limiteTempo <= 0) {
+        printf("Erro: valores inválidos em SIMULACAO. Ajuste o arquivo.\n");
+        exit(1);
+    }
+    if (sim->qtdProdutos <= 0 || sim->taxaProdutosSeg <= 0) {
+        printf("Erro: valores inválidos em PRODUTOS. Ajuste o arquivo.\n");
+        exit(1);
+    }
+}
+
+void validarEtapa(Etapa *etapa) {
+    if (etapa->id < 0 || etapa->capacidade < 0 ||
+        etapa->taxaFalhaInicial < 0.0 || etapa->taxaFalhaInicial > 1.0) {
+        printf("Erro: dados inválidos na ETAPA %d (%s). Ajuste o arquivo.\n",
+               etapa->id, etapa->nome);
+        exit(1);
+    }
+}
+
+void validarAtividade(Atividade *atividade) {
+    if (atividade->id < 0 || atividade->tempo <= 0 ||
+        atividade->taxaFalha < 0.0 || atividade->taxaFalha > 1.0) {
+        printf("Erro: dados inválidos na ATIVIDADE %d (%s). Ajuste o arquivo.\n",
+               atividade->id, atividade->nome);
+        exit(1);
+    }
+}
+
 // ---------------------- Programa principal ----------------------
 
 int main() {
@@ -84,11 +123,15 @@ int main() {
     char linha[200];
 
     Simulacao *sim = malloc(sizeof(Simulacao));
+    if (!sim) {
+        printf("Erro: falha ao alocar memória para Simulacao.\n");
+        return 1;
+    }
     sim->linhaProducao = NULL;
 
     arquivo = fopen("entrada.txt", "r");
     if (!arquivo) {
-        perror("Erro ao abrir arquivo");
+        printf("Erro ao abrir arquivo.\n");
         return 1;
     }
 
@@ -103,10 +146,17 @@ int main() {
     fgets(linha, sizeof(linha), arquivo);
     sscanf(linha, "PRODUTOS %d %d %49s", &sim->qtdProdutos, &sim->taxaProdutosSeg, sim->nomeProduto);
 
+    validarSimulacao(sim);
+
     // LINHA_PRODUCAO
     int qtdEtapas;
     fgets(linha, sizeof(linha), arquivo);
     sscanf(linha, "LINHA_PRODUCAO %d", &qtdEtapas);
+
+    if (qtdEtapas <= 0) {
+        printf("Erro: quantidade de etapas inválida. Ajuste o arquivo.\n");
+        exit(1);
+    }
 
     // ETAPAS
     for (int i = 0; i < qtdEtapas; i++) {
@@ -118,6 +168,7 @@ int main() {
         sscanf(linha, "ETAPA %d %d %d %f %49s", &id, &qtdAtividades, &capacidade, &taxaFalha, nomeEtapa);
 
         Etapa *etapa = criarEtapa(id, capacidade, taxaFalha, nomeEtapa);
+        validarEtapa(etapa);
 
         for (int j = 0; j < qtdAtividades; j++) {
             int idA, tempo;
@@ -128,6 +179,7 @@ int main() {
             sscanf(linha, "ATIVIDADE %d %d %f %49s", &idA, &tempo, &taxaFalhaA, nomeAtividade);
 
             Atividade *atividade = criarAtividade(idA, tempo, taxaFalhaA, nomeAtividade);
+            validarAtividade(atividade);
             adicionarAtividade(etapa, atividade);
         }
 
@@ -151,19 +203,6 @@ int main() {
         }
         e = e->prox;
     }
-    // Liberação de memória
-    e = sim->linhaProducao;
-    while (e) {
-        Atividade *a = e->atividades;
-        while (a) {
-            Atividade *tmpA = a;
-            a = a->prox;
-            free(tmpA);
-        }
-        Etapa *tmpE = e;
-        e = e->prox;
-        free(tmpE);
-    }
-    free(sim);
+
     return 0;
 }
