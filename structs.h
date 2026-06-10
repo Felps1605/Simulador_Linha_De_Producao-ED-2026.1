@@ -18,12 +18,14 @@ struct simulacao{
     int    semente;
     char   nome_cenario[100];
     char   arquivo_entrada[100];
-    char   id_simulacao[100];
+    char   id_simulacao[50];
     int    n_produtos_total;
     int    vazao;
     char   modelo_produto[100];
     int    max_ticks;
-
+    int  n_etapas;
+    float meta; // != n° total de produtos. não é usado em cálculos, é um valor somente de expectativa
+    //por enquanto é uma porcentagem dos produtos totais
 
     // Estado
     int    tick_atual;
@@ -33,6 +35,7 @@ struct simulacao{
     int    produto_id;
     int    etapa_id;
     int    MODO_MANUAL;
+    //int  MODO_MUDO; DESABILITARIA OS PRINTFS DURANTE A EXECUÇÃO
     int    tempo_total_espera_produtos;
     //com a soma de todos os tempos de espera de cada um dos produtos é só dividir pelo
     // n de produtos concluidos para ter o tempo medio de espera

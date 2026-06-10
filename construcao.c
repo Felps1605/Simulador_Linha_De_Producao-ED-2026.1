@@ -8,8 +8,23 @@
 
 
 //funções de construção
-void inicializar_simulacao(simulacao *s)
+#include <time.h>
+#include <stdio.h>
+
+void gerar_id_simulacao(simulacao *s)
 {
+    time_t agora;
+    struct tm *info_tempo;
+
+    time(&agora);
+    info_tempo = localtime(&agora);
+
+    strftime(s->id_simulacao, sizeof(s->id_simulacao),"%Y%m%d_%H%M%S", info_tempo);
+}
+
+void inicializar_simulacao(simulacao *s)
+{   
+    gerar_id_simulacao(s);//s->id_simulacao = horario;
     s->fila_entrada = NULL;
     s->lixo = NULL;
     s->concluidos = NULL;
@@ -17,13 +32,18 @@ void inicializar_simulacao(simulacao *s)
     s->produto_id = 1;
     s->etapa_id = 1;
     s->produtos_criados = 0;
+    s->produtos_concluidos = 0;
     s->MODO_MANUAL = 0; // inicia em modo manual, pode ser alterado depois
+    s->n_etapas = 2;
 
+    strcpy(s->arquivo_entrada, "arquivocaijcna");
+    strcpy(s->nome_cenario, "nome_aleatorio");
 
     s->vazao = 2;
     s->n_produtos_total = 20; //parte arbitrária por enquanto
+    s->meta = (float)s->n_produtos_total *0.5; //a meta é concluir com sucesso 50 % dos produtos criados
     s->max_ticks = 100000;
-    s->semente = time(NULL); // semente aleatoria baseada no tempo atual, se houver entrada de semente no arquivo deve ser substituida
+    s->semente = (int)time(NULL); // semente aleatoria baseada no tempo atual, se houver entrada de semente no arquivo deve ser substituida
 }
 void criar_slots(atividade *a)
 {
@@ -54,7 +74,7 @@ void criar_atividade(etapa *dona, int indice, int capacidade)
     nova->qtd_uf = 1; // quantidade de unidades funcionais, arbitraria, pode ser alterada depois
     nova->capacidade_max = capacidade * nova->qtd_uf; // capacidade arbitraria, pode ser alterada depois
     nova->ocupacao = 0;
-    nova->tempo_de_processamento = 5;
+    nova->tempo_de_processamento = 10;
     nova->failrate = 0.1; // taxa de falha arbitraria, pode ser alterada depois
     nova->f = NULL;
     nova->proxima_atividade = NULL;
@@ -121,7 +141,7 @@ void criar_etapa(simulacao *s)
     nova->f->em_fila = 0;
 
     printf("Etapa %d criada, criando atividades\n", nova->id);
-    nova->num_atividades = 3; // arbitrario
+    nova->num_atividades = 2; // arbitrario
     for (int i = 1; i <= nova->num_atividades; i++)
     {
         int catividade = 2;

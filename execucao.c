@@ -135,7 +135,7 @@ void mostrar_pilha(pilha *p, simulacao *s)
     printf("\n");
 }
 
-void falhar_produto(produto *p, float failrate)
+void falhar_produto(produto *p, float failrate, simulacao *s)
 {
     float r = (float)rand() / RAND_MAX; // gera um número aleatório entre 0 e 1
     if (r < failrate)
@@ -144,6 +144,7 @@ void falhar_produto(produto *p, float failrate)
         p->evento_atual_etapa->evento_atual_atividade->falhou = 1;
         p->falhas++;
         p->etapa_atual->falhas++;
+        s->falhas_totais++;
         if (r < failrate / 2 || p->falhas > 3)
         { // se for uma falha catastrófica ou se o produto já tiver falhado mais de 3 vezes, considera-se o produto como defeituoso e não tenta consertar mais
             printf("Produto %d teve uma falha catastrófica na atividade %d\n", p->id, p->atividade_atual->id);
@@ -308,6 +309,7 @@ void avancar_produto(atividade *a, produto *p, simulacao *s)
     printf("Produto %d concluiu a ultima etapa do processo\n", p->id);
     p->evento_atual_etapa->tick_fim = s->tick_atual;
     empilhar(p, &s->concluidos);
+    s->produtos_concluidos++;
     p->etapa_atual = NULL;
     p->atividade_atual = NULL;
     p->tick_saida_linha = s->tick_atual;
@@ -327,7 +329,7 @@ void atualizar_atividade(atividade *a, simulacao *sim)
                 produto *p = s->p;
                 p->evento_atual_etapa->evento_atual_atividade->tick_fim_processamento = sim->tick_atual;
                 printf("Slot %d: Produto %d terminou de ser processado na Atividade %d\n", i, p->id, a->id);
-                falhar_produto(p, a->failrate); // joga os dados para falhar o produto
+                falhar_produto(p, a->failrate, sim); // joga os dados para falhar o produto
                 avancar_produto(a, p, sim);
                 a->slots[i].p = NULL; 
             }

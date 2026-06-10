@@ -16,7 +16,7 @@ void mostrar_fila(fila *f);
 
 void mostrar_pilha(pilha *p, simulacao *s);
 
-void falhar_produto(produto *p, float failrate);
+void falhar_produto(produto *p, float failrate, simulacao *sim);
 
 void mostrar_atividades(atividade *primeira);
 
