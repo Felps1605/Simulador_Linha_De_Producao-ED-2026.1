@@ -26,10 +26,56 @@ static int em_linha(simulacao *s);
 static void inicializar_resumos(simulacao *s);
 static void liberar_resumos(simulacao *s);
 
+static void imprimir_metadados_arquivo(FILE *arquivo, simulacao *s);
+static void imprimir_relatorio_etapas_arquivo(FILE *arquivo, simulacao *s);
+static void imprimir_relatorio_atividades_arquivo(FILE *arquivo, simulacao *s);
+static void imprimir_relatorio_produtos_arquivo(FILE *arquivo, simulacao *s);
+static void imprimir_historico_produto_arquivo(FILE *arquivo, simulacao *s, produto *p);
+static void trajetoria_arquivo(FILE *arquivo, produto *p);
+
 /* ============================================================
    FUNÇOES PUBLICAS
    ============================================================ */
+void relatorio_simulacao(simulacao *s)
+{
+    if (!s)
+    {
+        printf("Simulacao invalida.\n");
+        return;
+    }
 
+    inicializar_resumos(s);
+
+    preencher_resumos(s->resumo, s->concluidos);
+
+    char nome_arquivo[150];
+
+    snprintf(nome_arquivo,
+             sizeof(nome_arquivo),
+             "relatorio_%s.txt",
+             s->id_simulacao);
+
+    FILE *arquivo = fopen(nome_arquivo, "w");
+
+    if (!arquivo)
+    {
+        printf("Erro ao criar arquivo de relatorio.\n");
+        liberar_resumos(s);
+        return;
+    }
+
+    imprimir_metadados_arquivo(arquivo, s);
+    imprimir_relatorio_etapas_arquivo(arquivo, s);
+    imprimir_relatorio_atividades_arquivo(arquivo, s);
+    imprimir_relatorio_produtos_arquivo(arquivo, s);
+
+    fclose(arquivo);
+
+    printf("Relatorio salvo em: %s\n", nome_arquivo);
+
+    liberar_resumos(s);
+}
+/*
 void relatorio_simulacao(simulacao *s)
 {
 
@@ -44,7 +90,7 @@ void relatorio_simulacao(simulacao *s)
 
     liberar_resumos(s);
 }
-
+*/
 void imprimir_historico_produto(simulacao *s, produto *p)
 {
     if (!p)
@@ -277,6 +323,286 @@ static void trajetoria(produto * p)
 }
 
 /* ============================================================
+   FUNÇÕES DE IMPRESSAO NO ARQUIVO
+   ============================================================ */
+
+static void imprimir_metadados_arquivo(FILE *arquivo, simulacao *s)
+{
+    if (!arquivo)
+    {
+        return;
+    }
+
+    if (!s)
+    {
+        fprintf(arquivo, "Simulacao invalida.\n");
+        return;
+    }
+
+    fprintf(arquivo, "\n=== METADADOS ===\n");
+
+    fprintf(arquivo, "Id da simulacao: %s\n", s->id_simulacao);
+
+    fprintf(arquivo, "Semente utilizada: %d\n", s->semente);
+
+    fprintf(arquivo, "Arquivo de entrada: %s\n", s->arquivo_entrada);
+
+    fprintf(arquivo, "Nome do cenario: %s\n", s->nome_cenario);
+
+    fprintf(arquivo, "Produto: %s\n", s->modelo_produto);
+
+    fprintf(arquivo, "Tick fim: %d\n", s->tick_atual);
+
+    fprintf(arquivo, "Produtos concluidos: %d\n", s->produtos_concluidos);
+
+    fprintf(arquivo, "Produtos criados: %d\n", s->produtos_criados);
+
+    fprintf(arquivo, "Tempo medio na linha: %.2f\n",
+            s->resumo->tempo_medio_total);
+
+    fprintf(arquivo, "  Tempo minimo na linha: %d\n",
+            s->resumo->tempo_minimo);
+
+    fprintf(arquivo, "  Tempo medio em espera: %.2f\n",
+            s->resumo->tempo_medio_em_espera);
+
+    fprintf(arquivo, "    Tempo medio na fila de entrada: %.2f\n",
+            s->resumo->tempo_medio_na_fila_entrada);
+
+    fprintf(arquivo, "    Tempo medio total nas filas de atividades: %.2f\n",
+            s->resumo->tempo_medio_filas_atividades);
+
+    fprintf(arquivo, "  Tempo medio em retrabalho: %.2f\n",
+            s->resumo->tempo_medio_retrabalho);
+
+    fprintf(arquivo, "Falhas_totais: %d\n", s->falhas_totais);
+
+    fprintf(arquivo, "Meta alcancada(%.1f): %s\n",
+            s->meta,
+            s->resumo->meta_alcancada ? "SIM" : "NAO");
+
+    if (!s->resumo->meta_alcancada)
+    {
+        fprintf(arquivo, "Produtos faltantes: %.0f\n",
+                s->meta - s->produtos_concluidos);
+    }
+
+    if (s->tempo_excedido)
+    {
+        fprintf(arquivo, "Tempo limite atingido\n");
+        fprintf(arquivo, "Produtos em linha: %d \n", em_linha(s));
+    }
+}
+
+static void imprimir_relatorio_etapas_arquivo(FILE *arquivo, simulacao *s)
+{
+    if (!arquivo)
+    {
+        return;
+    }
+
+    if (!s || !s->linha)
+    {
+        fprintf(arquivo, "Linha invalida!\n");
+        return;
+    }
+
+    if (!s->linha->primeira_etapa)
+    {
+        fprintf(arquivo, "Nenhuma etapa registrada na linha.\n");
+        return;
+    }
+
+    fprintf(arquivo, "\n-------------- RELATORIO DE ETAPAS --------------\n");
+
+    etapa *atual = s->linha->primeira_etapa;
+
+    while (atual)
+    {
+        fprintf(arquivo, "\nETAPA %d, %s:\n",
+                atual->id,
+                atual->nome);
+
+        fprintf(arquivo, "\tAtividades: %d\n",
+                atual->num_atividades);
+
+        fprintf(arquivo, "\tCapacidade total: %d\n",
+                atual->capacidade_max);
+
+        fprintf(arquivo, "\tFalhas totais: %d\n",
+                atual->falhas);
+
+        fprintf(arquivo, "\tFailrate: %.2f\n",
+                atual->failrate);
+
+        fprintf(arquivo, "\tQuantidade de produtos que entraram: %d\n",
+                atual->qtd_produtos_entraram);
+
+        fprintf(arquivo, "\tQuantidade de produtos concluidos: %d\n",
+                atual->qtd_produtos_concluidos);
+
+        fprintf(arquivo, "\tMedia de falhas por produto: %.2f\n",
+                atual->resumo->falhas_por_produto);
+
+        fprintf(arquivo, "\tTempo medio: %.2f\n",
+                atual->resumo->tempo_medio);
+
+        fprintf(arquivo, "\t  Tempo minimo: %d\n",
+                atual->resumo->tempo_minimo);
+
+        fprintf(arquivo, "\t  Tempo medio total em filas de atividade: %.2f\n",
+                atual->resumo->tempo_medio_filas_atividades);
+
+        fprintf(arquivo, "\t  Tempo medio na fila de prontos da etapa: %.2f\n",
+                atual->resumo->tempo_medio_fila_prontos);
+
+        fprintf(arquivo, "\tMaior tempo: %d\n",
+                atual->resumo->maior_tempo);
+
+        atual = atual->proxima_etapa;
+    }
+}
+
+static void imprimir_relatorio_atividades_arquivo(FILE *arquivo, simulacao *s)
+{
+    if (!arquivo)
+    {
+        return;
+    }
+
+    if (!s || !s->linha)
+    {
+        fprintf(arquivo, "Linha invalida!\n");
+        return;
+    }
+
+    if (!s->linha->primeira_etapa)
+    {
+        fprintf(arquivo, "Nenhuma etapa registrada na linha.\n");
+        return;
+    }
+
+    fprintf(arquivo, "\n-------------- RELATORIO DE ATIVIDADES --------------\n");
+
+    etapa *e_atual = s->linha->primeira_etapa;
+
+    while (e_atual)
+    {
+        fprintf(arquivo, "\nETAPA %d, %s:\n",
+                e_atual->id,
+                e_atual->nome);
+
+        atividade *a_atual = e_atual->primeira_atividade;
+
+        while (a_atual)
+        {
+            fprintf(arquivo, "\n  ATIVIDADE %d, %s:\n",
+                    a_atual->id,
+                    a_atual->nome);
+
+            fprintf(arquivo, "\tCapacidade: %d \n",
+                    a_atual->capacidade_max);
+
+            fprintf(arquivo, "\t  Capacidade por Unidade Funcional: %d\n",
+                    a_atual->capacidade_max / a_atual->qtd_uf);
+
+            fprintf(arquivo, "\t  Quantidade de Unidades Funcionais: %d\n",
+                    a_atual->qtd_uf);
+
+            fprintf(arquivo, "\tFailrate: %.2f\n",
+                    a_atual->failrate);
+
+            fprintf(arquivo, "\tTempo medio total:  %.2f\n",
+                    a_atual->resumo->tempo_medio_total);
+
+            fprintf(arquivo, "\t  Tempo de execucao: %d \n",
+                    a_atual->tempo_de_processamento);
+
+            fprintf(arquivo, "\t  Tempo medio em fila: %.2f\n",
+                    a_atual->resumo->tempo_medio_na_fila);
+
+            fprintf(arquivo, "\tMaior Tempo: %d \n ",
+                    a_atual->resumo->maior_tempo);
+
+            a_atual = a_atual->proxima_atividade;
+        }
+
+        e_atual = e_atual->proxima_etapa;
+    }
+}
+
+static void imprimir_relatorio_produtos_arquivo(FILE *arquivo, simulacao *s)
+{
+    if (!arquivo)
+    {
+        return;
+    }
+
+    fprintf(arquivo, "\n-------RELATORIO DE PRODUTOS--------\n");
+
+    if (!s || !s->concluidos || !s->concluidos->topo)
+    {
+        fprintf(arquivo, "Nenhum produto concluido.\n");
+        return;
+    }
+
+    produto *atual = s->concluidos->topo;
+
+    while (atual)
+    {
+        imprimir_historico_produto_arquivo(arquivo, s, atual);
+        atual = atual->proximo_produto;
+    }
+}
+
+static void trajetoria_arquivo(FILE *arquivo, produto *p)
+{
+    if (!arquivo || !p)
+    {
+        return;
+    }
+
+    fprintf(arquivo, "\nTRAJETORIA:\n\n");
+
+    evento_etapa *atual = p->historico_etapas;
+
+    while (atual)
+    {
+        fprintf(arquivo, "Etapa %d %s tentativa %d\n",
+                atual->e->id,
+                atual->e->nome,
+                atual->tentativa);
+
+        evento_atividade *a_atual = atual->historico_atividades;
+
+        while (a_atual)
+        {
+            fprintf(arquivo,
+                    "Atividade %d %s fila: %d inicio: %d conclusao: %d  %s\n",
+                    a_atual->a->id,
+                    a_atual->a->nome,
+                    a_atual->tick_fila,
+                    a_atual->tick_inicio_processamento,
+                    a_atual->tick_fim_processamento,
+                    a_atual->falhou ? "FALHOU" : "OK");
+
+            a_atual = a_atual->proximo_evento;
+        }
+
+        if (!atual->falhou)
+        {
+            fprintf(arquivo, "Tempo na etapa: %d\n",
+                    atual->tick_fim - atual->tick_inicio);
+
+            fprintf(arquivo, "  Tempo na fila de prontos da etapa: %d\n",
+                    atual->tick_fim - atual->tick_conclusao);
+        }
+
+        atual = atual->proximo_evento;
+    }
+}
+
+/* ============================================================
    FUNÇÕES DE INICIALIZACAO E CALCULO
    ============================================================ */
 
@@ -497,6 +823,8 @@ static int em_linha(simulacao *s)
     }
     return soma;
 }
+
+
 
 /* ============================================================
    FUNÇAO DE LIBERAÇÃO
