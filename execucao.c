@@ -54,6 +54,10 @@ void opcoes(simulacao *s);
 void opcoes_finais(simulacao *s)
 {   
     printf("\n\nSimulacao encerrada\n\n");
+    
+    inicializar_resumos(s);
+    preencher_resumos(s->resumo, s->concluidos);
+
     while (1)
     {
         int opcao;
@@ -307,6 +311,7 @@ void encerrar_simulacao(simulacao *s)
     liberar_etapas(s->linha);
     liberar_pilha(s->lixo);
     liberar_pilha(s->concluidos);
+    liberar_resumos(s);
     printf("Programa encerrado\n");
     exit(0);
 }
@@ -636,7 +641,7 @@ void mostrar_etapas(simulacao *s)
         return;
     }
     if(s->fila_entrada)
-        printf("Fila de entrada: %d produtos", s->fila_entrada->em_fila);
+        printf("Fila de entrada: %d produtos\n", s->fila_entrada->em_fila);
     etapa *atual = s->linha->primeira_etapa;
     while (atual != NULL)
     {
