@@ -44,6 +44,7 @@ void inicializar_simulacao(simulacao *s)
     s->meta = (float)s->n_produtos_total *0.5; //a meta é concluir com sucesso 50 % dos produtos criados
     s->max_ticks = 100000;
     s->semente = 1; //(int)time(NULL); // semente aleatoria baseada no tempo atual, se houver entrada de semente no arquivo deve ser substituida
+    s->resumo = NULL;
 }
 void criar_slots(atividade *a)
 {
@@ -78,6 +79,7 @@ void criar_atividade(etapa *dona, int indice, int capacidade)
     nova->failrate = 0.1; // taxa de falha arbitraria, pode ser alterada depois
     nova->f = NULL;
     nova->proxima_atividade = NULL;
+    nova->resumo = NULL;
     criar_slots(nova);
     printf("Atividade %d criada, setando os ponteiros\n", nova->id);
     if ((dona->primeira_atividade) == NULL)
@@ -110,6 +112,9 @@ void criar_etapa(simulacao *s)
     nova->qtd_produtos_concluidos = 0;
     nova->qtd_produtos_entraram =0;
     nova->falhas = 0;
+    nova->failrate = 0.1;
+
+    nova->resumo = NULL;
 
     if (s->linha == NULL)
     {
@@ -152,5 +157,4 @@ void criar_etapa(simulacao *s)
     nova->capacidade_max = nova->capacidade_max + capacidade_filas;
     printf("Etapa %d e suas atividades concluidas\n", nova->id);
 }
-
 

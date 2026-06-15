@@ -3,14 +3,18 @@
 
 #include "structs.h"
 
-typedef struct tempos{
-    float tempo_em_fila_de_atividades;
-    float tempo_em_fila_de_prontos;
-}tempos;
+void relatorio_simulacao(simulacao *s);
 
-void mostrar_metadados(simulacao *s);
-void mostrar_relatorio_etapas(simulacao *s);
-void mostrar_relatorio_atividades(simulacao *s);
-void mostrar_trajetoria_produtos(simulacao *s);
+void imprimir_historico_produto(simulacao * s, produto * p);
+
+void mostrar_pilha(pilha *p, simulacao *s);
+
+void imprimir_metadados(simulacao *s);
+
+void imprimir_relatorio_etapas(simulacao *s);
+
+void imprimir_relatorio_atividades(simulacao *s);
+
+void imprimir_relatorio_produtos(simulacao *s);
 
 #endif

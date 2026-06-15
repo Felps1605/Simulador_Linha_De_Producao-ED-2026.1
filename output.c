@@ -5,6 +5,7 @@
 
 #include "structs.h"
 #include "output.h"
+#include "execucao.h"
 
 /*
     output.c
@@ -12,40 +13,85 @@
     Funções responsáveis por gerar relatórios e calcular métricas
     a partir dos dados coletados durante a simulação.
 
-    Ideia principal:
-    - O relatório por etapa usa os produtos da pilha de concluídos.
-    - Cada produto concluído possui um histórico de eventos de etapa.
-    - Cada evento de etapa possui um histórico de eventos de atividade.
 */
 
 /* ============================================================
    PROTÓTIPOS PRIVADOS
    ============================================================ */
 
-static int etapa_valida(etapa *e);
-static int pilha_valida(pilha *p);
-
-static int buscar_tempo_na_etapa(produto *p, int id_etapa);
-static int buscar_tempo_em_fila_nas_atividades(evento_etapa *ev_etapa);
-static tempos buscar_tempos_de_fila_na_etapa(produto *p, int id_etapa);
-
-static float tempo_medio_na_etapa(etapa *e, pilha *produtos);
-static int tempo_maximo_na_etapa(etapa *e, pilha *produtos);
-static tempos tempo_medio_em_fila_por_etapa(etapa *e, pilha *produtos);
-
-static int tempo_minimo_na_etapa(etapa *e);
-
-static float tempo_medio_na_linha(simulacao *s);
-static float tempo_medio_em_espera(simulacao *s);
-
-static float tempo_medio_fila_atividade(atividade *a, pilha *produtos);
-
+static void preencher_resumos(resumo_simulacao *rs, pilha *produtos);
+static void trajetoria(produto * p);
+static int tempo_filas_atividades(produto * p);
+static int em_linha(simulacao *s);
+static void inicializar_resumos(simulacao *s);
+static void liberar_resumos(simulacao *s);
 
 /* ============================================================
-   FUNÇÕES DE RELATÓRIO
+   FUNÇOES PUBLICAS
    ============================================================ */
 
-void mostrar_metadados(simulacao *s)
+void relatorio_simulacao(simulacao *s)
+{
+
+    inicializar_resumos(s);
+    preencher_resumos(s->resumo, s->concluidos); // por enquanto calcula so com os concluidos, mas depois dá pra trocar por uma pilha com todos os produtos
+
+    // futuramente imprimir no terminal e no arquivo de saida
+    imprimir_metadados(s);
+    imprimir_relatorio_etapas(s);
+    imprimir_relatorio_atividades(s);
+    //imprimir_relatorio_produtos(s);
+
+    liberar_resumos(s);
+}
+
+void imprimir_historico_produto(simulacao *s, produto *p)
+{
+    if (!p)
+    {
+        printf("Produto nao encontrado\n");
+        return;
+    }
+    printf("\n\n---Produto %d---\n\n", p->id);
+    printf("Modelo: %s\n", s->modelo_produto);
+    if (p->tick_saida_linha)
+    {
+        printf("Tick de Criacao: %d \n", p->tick_criacao);
+        printf("Tick de Entrada na linha: %d \n", p->tick_entrada_linha);
+        printf("Tick de Saida da linha: %d \n", p->tick_saida_linha);
+        printf("Localizacao atual: Pilha de Concluidos \n");
+    }
+    else if (p->tick_entrada_linha)
+    {
+        printf("Tick de Criacao: %d \n", p->tick_criacao);
+        printf("Tick de Entrada na linha: %d \n", p->tick_entrada_linha);
+        if(p->defeituoso == 2)
+            printf("Localizacao atual: Pilha de Lixo \n");
+        else
+            printf("Localizacao atual: Em linha \n");
+    }
+    else
+    {
+        printf("Tick de Criacao: %d \n", p->tick_criacao);
+        printf("Localizacao atual: Fila de entrada da linha \n");
+        return;
+    }
+    int tempo_filas_atividade = tempo_filas_atividades(p);
+    printf("Tempo Total no Sistema: %d \n", p->tick_saida_linha - p->tick_criacao);
+    printf("  Tempo na fila de entrada: %d \n", p->tick_entrada_linha - p->tick_criacao);
+    printf("  Tempo na linha: %d \n", p->tick_saida_linha - p->tick_entrada_linha);
+    printf("    Filas de atividade: %d \n", tempo_filas_atividade);
+    printf("    Processamento e Retrabalho : %d \n",(p->tick_saida_linha - p->tick_entrada_linha) - tempo_filas_atividade);
+    printf("Tempo Total em espera: %d \n", tempo_filas_atividade + (p->tick_entrada_linha - p->tick_criacao));
+    
+    
+    
+    printf("Falhas: %d \n", p->falhas);
+
+    trajetoria(p);
+}
+
+void imprimir_metadados(simulacao *s)
 {
     if (!s)
     {
@@ -53,30 +99,51 @@ void mostrar_metadados(simulacao *s)
         return;
     }
 
-    int meta_batida = (s->produtos_concluidos >= s->meta);
-
     printf("\n=== METADADOS ===\n");
 
     printf("Id da simulacao: %s\n", s->id_simulacao);
-    printf("Semente utilizada: %d\n", s->semente);
-    printf("Arquivo de entrada: %s\n", s->arquivo_entrada);
-    printf("Nome do cenario: %s\n", s->nome_cenario);
-    printf("Tick_fim: %d\n", s->tick_atual);
-    printf("Produtos_concluidos: %d\n", s->produtos_concluidos);
-    printf("Produtos criados: %d\n", s->produtos_criados);
-    printf("Tempo_medio_linha: %.2f\n", tempo_medio_na_linha(s));
-    printf("Tempo_medio_espera: %.2f\n", tempo_medio_em_espera(s));
-    printf("Falhas_totais: %d\n", s->falhas_totais);
-    printf("Meta alcancada(%.1f): %s\n",s->meta, meta_batida ? "Sim" : "Nao");
 
-    if (!meta_batida)
-    {
-        printf("Produtos faltantes: %.0f\n",
-               s->meta - s->produtos_concluidos);
+    printf("Semente utilizada: %d\n", s->semente);
+
+    printf("Arquivo de entrada: %s\n", s->arquivo_entrada);
+
+    printf("Nome do cenario: %s\n", s->nome_cenario);
+
+    printf("Produto: %s\n", s->modelo_produto);
+
+    printf("Tick fim: %d\n", s->tick_atual);
+
+    printf("Produtos concluidos: %d\n", s->produtos_concluidos);
+
+    printf("Produtos criados: %d\n", s->produtos_criados);
+
+    printf("Tempo medio na linha: %.2f\n", s->resumo->tempo_medio_total);
+
+    printf("  Tempo minimo na linha: %d\n", s->resumo->tempo_minimo);
+
+    printf("  Tempo medio em espera: %.2f\n", s->resumo->tempo_medio_em_espera);
+
+    printf("    Tempo medio na fila de entrada: %.2f\n", s->resumo->tempo_medio_na_fila_entrada);
+
+    printf("    Tempo medio total nas filas de atividades: %.2f\n", s->resumo->tempo_medio_filas_atividades);
+
+    printf("  Tempo medio em retrabalho: %.2f\n", s->resumo->tempo_medio_retrabalho);
+
+    printf("Falhas_totais: %d\n", s->falhas_totais);
+
+    printf("Meta alcancada(%.1f): %s\n", s->meta, s->resumo->meta_alcancada ? "SIM" : "NAO");
+
+    if (!s->resumo->meta_alcancada)
+        printf("Produtos faltantes: %.0f\n", s->meta - s->produtos_concluidos);
+    if(s->tempo_excedido){
+        printf("Tempo limite atingido\n");
+        printf("Produtos em linha: %d \n", em_linha(s) );
     }
+
+
 }
 
-void mostrar_relatorio_etapas(simulacao *s)
+void imprimir_relatorio_etapas(simulacao *s)
 {
     if (!s || !s->linha)
     {
@@ -96,39 +163,38 @@ void mostrar_relatorio_etapas(simulacao *s)
 
     while (atual)
     {
-        tempos tf = tempo_medio_em_fila_por_etapa(atual, s->concluidos);
 
         printf("\nETAPA %d, %s:\n", atual->id, atual->nome);
 
         printf("\tAtividades: %d\n", atual->num_atividades);
+
+        printf("\tCapacidade total: %d\n", atual->capacidade_max);
+
         printf("\tFalhas totais: %d\n", atual->falhas);
+
+        printf("\tFailrate: %.2f\n", atual->failrate);
+
         printf("\tQuantidade de produtos que entraram: %d\n", atual->qtd_produtos_entraram);
+
         printf("\tQuantidade de produtos concluidos: %d\n", atual->qtd_produtos_concluidos);
 
-        if (atual->qtd_produtos_entraram > 0)
-        {
-            printf("\tMedia de falhas por produto: %.2f\n", (float)atual->falhas / atual->qtd_produtos_entraram);
-        }
-        else
-        {
-            printf("\tMedia de falhas por produto: 0.00\n");
-        }
+        printf("\tMedia de falhas por produto: %.2f\n", atual->resumo->falhas_por_produto);
 
-        printf("\tTempo minimo: %d\n", tempo_minimo_na_etapa(atual));
+        printf("\tTempo medio: %.2f\n", atual->resumo->tempo_medio);
 
-        printf("\tTempo medio: %.2f\n", tempo_medio_na_etapa(atual, s->concluidos));
+        printf("\t  Tempo minimo: %d\n", atual->resumo->tempo_minimo);
 
-        printf("\tMaior tempo: %d\n", tempo_maximo_na_etapa(atual, s->concluidos));
+        printf("\t  Tempo medio total em filas de atividade: %.2f\n", atual->resumo->tempo_medio_filas_atividades);
 
-        printf("\tTempo medio total em filas de atividade: %.2f\n", tf.tempo_em_fila_de_atividades);
+        printf("\t  Tempo medio na fila de prontos da etapa: %.2f\n", atual->resumo->tempo_medio_fila_prontos);
 
-        printf("\tTempo medio na fila de prontos da etapa: %.2f\n", tf.tempo_em_fila_de_prontos);
+        printf("\tMaior tempo: %d\n", atual->resumo->maior_tempo);
 
         atual = atual->proxima_etapa;
     }
 }
 
-void mostrar_relatorio_atividades(simulacao *s)
+void imprimir_relatorio_atividades(simulacao *s)
 {
     if (!s || !s->linha)
     {
@@ -149,15 +215,27 @@ void mostrar_relatorio_atividades(simulacao *s)
     while (e_atual)
     {
         printf("\nETAPA %d, %s:\n", e_atual->id, e_atual->nome);
-        atividade * a_atual = e_atual->primeira_atividade;
-        while(a_atual)
+
+        atividade *a_atual = e_atual->primeira_atividade;
+        while (a_atual)
         {
             printf("\n  ATIVIDADE %d, %s:\n", a_atual->id, a_atual->nome);
-            printf("\tCapacidade: %d \n", a_atual->capacidade_max);//possivelmente depois mostrar capacidade por uf e qtd de ufs
-            printf("\tTempo de execucao: %d \n", a_atual->tempo_de_processamento);
-            float tmf = tempo_medio_fila_atividade(a_atual, s->concluidos);
-            printf("\tTempo medio em fila: %.2f\n", tmf );
-            printf("\tTempo medio total:  %.2f\n", tmf + a_atual->tempo_de_processamento);
+
+            printf("\tCapacidade: %d \n", a_atual->capacidade_max);
+
+            printf("\t  Capacidade por Unidade Funcional: %d\n", a_atual->capacidade_max / a_atual->qtd_uf);
+
+            printf("\t  Quantidade de Unidades Funcionais: %d\n", a_atual->qtd_uf);
+
+            printf("\tFailrate: %.2f\n", a_atual->failrate);
+
+            printf("\tTempo medio total:  %.2f\n", a_atual->resumo->tempo_medio_total);
+
+            printf("\t  Tempo de execucao: %d \n", a_atual->tempo_de_processamento);
+
+            printf("\t  Tempo medio em fila: %.2f\n", a_atual->resumo->tempo_medio_na_fila);
+
+            printf("\tMaior Tempo: %d \n ", a_atual->resumo->maior_tempo);
 
             a_atual = a_atual->proxima_atividade;
         }
@@ -165,401 +243,274 @@ void mostrar_relatorio_atividades(simulacao *s)
     }
 }
 
-//void mostrar_trajetoria_produtos(){}
-
-/* ============================================================
-   FUNÇÕES DE CÁLCULO GERAL
-   ============================================================ */
-
-static float tempo_medio_na_linha(simulacao *s)
+void imprimir_relatorio_produtos(simulacao *s)
 {
-    if (!s || !pilha_valida(s->concluidos))
+    printf("\n-------RELATORIO DE PRODUTOS--------\n");
+    produto * atual = s->concluidos->topo;
+    while(atual)
     {
-        return 0;
+        imprimir_historico_produto(s, atual);
+        atual = atual->proximo_produto; 
     }
+}
 
-    float soma = 0;
-    int quantidade = 0;
-
-    produto *atual = s->concluidos->topo;
-
+// funcao auxiliar de imprimir_historico_produto
+static void trajetoria(produto * p)
+{
+    printf("\nTRAJETORIA:\n\n");
+    evento_etapa *atual = p->historico_etapas;
     while (atual)
     {
-        if (atual->tick_saida_linha >= 0 &&
-            atual->tick_criacao >= 0)
+        printf("Etapa %d %s tentativa %d\n", atual->e->id, atual->e->nome, atual->tentativa);
+        evento_atividade *a_atual = atual->historico_atividades;
+        while (a_atual)
         {
-            soma += atual->tick_saida_linha - atual->tick_criacao;
-            quantidade++;
+            printf("Atividade %d %s fila: %d inicio: %d conclusao: %d  %s\n", a_atual->a->id, a_atual->a->nome, a_atual->tick_fila, a_atual->tick_inicio_processamento, a_atual->tick_fim_processamento, a_atual->falhou ? "FALHOU" : "OK");
+              a_atual = a_atual->proximo_evento;
         }
-
-        atual = atual->proximo_produto;
+        if(!atual->falhou){
+            printf("Tempo na etapa: %d\n", atual->tick_fim - atual->tick_inicio);
+            printf("  Tempo na fila de prontos da etapa: %d\n", atual->tick_fim - atual->tick_conclusao);
+        }
+        atual = atual->proximo_evento;
     }
-
-    if (quantidade == 0)
-    {
-        return 0;
-    }
-
-    return soma / quantidade;
 }
 
-static float tempo_medio_em_espera(simulacao *s)
-{
-    if (!s || !s->linha || !pilha_valida(s->concluidos))
-    {
-        return 0;
+/* ============================================================
+   FUNÇÕES DE INICIALIZACAO E CALCULO
+   ============================================================ */
+
+static void preencher_resumos(resumo_simulacao *rs, pilha *produtos)
+{ // percorre cada evento de atividade de cada evento etapa e de cada produto e preenche os resumos
+    printf("Iniciando preenchimento de relatorios \n");
+    if(!produtos){
+        printf("Pilha de concluidos vazia, nao e possivel fazer relatorio\n");
+        encerrar_simulacao(rs->s);
     }
-
-    float media_fila_entrada = 0;
-    int quantidade = 0;
-
-    produto *p = s->concluidos->topo;
-
+    produto *p = produtos->topo;
+    float soma_tempo_medio_total = 0;
+    float soma_tempo_fila_entrada = 0;
     while (p)
     {
-        if (p->tick_criacao >= 0 &&
-            p->tick_entrada_linha >= 0)
-        {
-            media_fila_entrada += p->tick_entrada_linha - p->tick_criacao;
-            quantidade++;
-        }
 
+        soma_tempo_medio_total += (p->tick_saida_linha - p->tick_criacao);
+        soma_tempo_fila_entrada += (p->tick_entrada_linha - p->tick_criacao);
+
+        evento_etapa *ev_et = p->historico_etapas;
+        while (ev_et)
+        {
+
+            int etapa_valida = !ev_et->falhou && ev_et->tick_inicio >= 0 && ev_et->tick_fim >= 0;
+
+            evento_atividade *ev_at = ev_et->historico_atividades;
+
+            while (ev_at)
+            {
+                ev_at->a->resumo->passagens++;
+                int tempo_total_at = ev_at->tick_fim_processamento - ev_at->tick_fila;
+                int tempo_fila = ev_at->tick_inicio_processamento - ev_at->tick_fila;
+
+                
+                ev_at->a->resumo->soma_tempo_na_fila += tempo_fila;
+
+                ev_at->a->resumo->soma_tempo_total += tempo_total_at;
+
+                if (tempo_total_at > ev_at->a->resumo->maior_tempo)
+                    ev_at->a->resumo->maior_tempo = tempo_total_at;
+
+                if (etapa_valida)
+                    ev_at->a->resumo->soma_tempo_na_fila_etapa_valida += tempo_fila;
+
+                ev_at = ev_at->proximo_evento;
+            }
+            if (etapa_valida) // exclui da contagem as tentativas falhas (bagunçam o relatorio)
+            {
+
+                ev_et->e->resumo->passagens++;
+
+                int tempo_total_et = ev_et->tick_fim - ev_et->tick_inicio;
+
+                ev_et->e->resumo->soma_tempo_total += tempo_total_et;
+
+                ev_et->e->resumo->soma_tempo_fila_prontos += ev_et->tick_fim - ev_et->tick_conclusao;
+
+                if (tempo_total_et > ev_et->e->resumo->maior_tempo)
+                    ev_et->e->resumo->maior_tempo = tempo_total_et;
+            }
+
+            ev_et = ev_et->proximo_evento;
+        }
         p = p->proximo_produto;
     }
 
-    if (quantidade > 0)
+    // dados coletados, agora é preciso ir em cada resumo_etapa e resumo_atividade e setar os dados
+
+    float soma_tempo_minimo_total = 0;
+    float soma_tempo_filas_total = 0;
+    for (int i = 0; i < rs->s->n_etapas; i++)
     {
-        media_fila_entrada /= quantidade;
+
+        resumo_etapa *re = &(rs->resumos_etapas[i]);
+        float soma_tempo_minimo_etapa = 0;
+        ;
+        float soma_tempo_filas_etapa = 0;
+        for (int j = 0; j < re->e->num_atividades; j++)
+        {
+            resumo_atividade *ra = &(re->resumos_atividades[j]);
+            if (ra->passagens && re->passagens)
+            {
+                ra->tempo_medio_na_fila = ra->soma_tempo_na_fila / ra->passagens;
+                ra->tempo_medio_total = ra->soma_tempo_total / ra->passagens;
+                ra->tempo_medio_na_fila_etapas_validas = ra->soma_tempo_na_fila_etapa_valida / re->passagens;
+                // ra->maior_tempo ja ta setado
+                // ra->passagens também já setado
+            }
+            else
+            {
+                ra->tempo_medio_na_fila = 0;
+                ra->tempo_medio_total = 0;
+                ra->maior_tempo = 0;
+                ra->tempo_medio_na_fila_etapas_validas = 0;
+            }
+
+            soma_tempo_minimo_etapa += ra->a->tempo_de_processamento;
+            /*não posso calcular o tempo medio em filas de atividade da etapa só somando tempo medio de cada atividade,
+             pois essas incluem execuções de atividades em eventos etapas inválidos*/
+
+            soma_tempo_filas_etapa += ra->tempo_medio_na_fila_etapas_validas;
+        }
+        if (re->e->resumo->passagens && re->e->qtd_produtos_entraram)
+        {
+            re->falhas_por_produto = (float)re->e->falhas / re->e->qtd_produtos_entraram;
+            re->tempo_medio = re->soma_tempo_total / re->e->resumo->passagens;
+            re->tempo_medio_fila_prontos = re->soma_tempo_fila_prontos / re->e->resumo->passagens;
+        }
+        else
+        {
+            re->falhas_por_produto = 0;
+            re->tempo_medio = 0;
+            re->tempo_medio_fila_prontos = 0;
+        }
+        re->tempo_medio_filas_atividades = soma_tempo_filas_etapa;
+        // re->maior_tempo ja ta setado
+        re->tempo_minimo = soma_tempo_minimo_etapa;
+
+        re->tempo_medio_filas_total = re->tempo_medio_filas_atividades + re->tempo_medio_fila_prontos;
+
+        soma_tempo_minimo_total += re->tempo_minimo;
+        soma_tempo_filas_total += re->tempo_medio_filas_total;
     }
+    rs->tempo_medio_total = soma_tempo_medio_total / produtos->em_pilha;
 
-    float soma_filas_etapas = 0;
+    rs->tempo_minimo = soma_tempo_minimo_total;
 
-    etapa *e = s->linha->primeira_etapa;
+    rs->tempo_medio_na_fila_entrada = soma_tempo_fila_entrada / produtos->em_pilha;
+    rs->tempo_medio_filas_atividades = soma_tempo_filas_total;
 
-    while (e)
-    {
-        tempos tf = tempo_medio_em_fila_por_etapa(e, s->concluidos);
+    rs->tempo_medio_em_espera = rs->tempo_medio_filas_atividades + rs->tempo_medio_na_fila_entrada;
 
-        soma_filas_etapas += tf.tempo_em_fila_de_atividades;
-        soma_filas_etapas += tf.tempo_em_fila_de_prontos;
+    rs->meta_alcancada = (rs->s->produtos_concluidos >= rs->s->meta) ? 1 : 0;
 
-        e = e->proxima_etapa;
-    }
+    rs->tempo_medio_retrabalho = rs->tempo_medio_total - rs->tempo_medio_em_espera - rs->tempo_minimo;
 
-    return media_fila_entrada + soma_filas_etapas;
+    printf("Relatorios prontos\n");
 }
 
-
-/* ============================================================
-   FUNÇÕES DE CÁLCULO POR ETAPA
-   ============================================================ */
-
-static int tempo_minimo_na_etapa(etapa *e)
+static void inicializar_resumos(simulacao *s)
 {
-    if (!etapa_valida(e))
+    printf("Inicializando relatorios \n");
+    resumo_simulacao *rs = malloc(sizeof(resumo_simulacao));
+    rs->resumos_etapas = malloc(s->n_etapas * sizeof(resumo_etapa));
+    if (!rs->resumos_etapas)
     {
-        return 0;
+        printf("Erro ao alocar memoria para relatorios \n");
+        exit(0);
     }
+    // resumos_etapas agora é um vetor de resumo_etapa
+    etapa *atual = s->linha->primeira_etapa;
+    for (int i = 0; i < s->n_etapas; i++)
+    {
+        resumo_etapa *re = &rs->resumos_etapas[i];
+        re->e = atual;
+        atual->resumo = re;
+        re->resumos_atividades = malloc(re->e->num_atividades * sizeof(resumo_atividade));
+        if (!re->resumos_atividades)
+        {
+            printf("Erro ao alocar memoria para relatorios \n");
+            exit(0);
+        }
+        // resumos_atividades agora é um vetor de resumo_atividade
+        atual->resumo->soma_tempo_fila_prontos = 0;
+        atual->resumo->soma_tempo_total = 0;
+        atual->resumo->maior_tempo = 0;
+        atual->resumo->passagens = 0;
 
+        atividade *a_atual = atual->primeira_atividade;
+        for (int j = 0; j < atual->num_atividades; j++)
+        {
+            re->resumos_atividades[j].a = a_atual;
+            a_atual->resumo = &(re->resumos_atividades[j]);
+            a_atual->resumo->soma_tempo_na_fila = 0;
+            a_atual->resumo->soma_tempo_total = 0;
+            a_atual->resumo->maior_tempo = 0;
+            a_atual->resumo->passagens = 0;
+            a_atual->resumo->soma_tempo_na_fila_etapa_valida = 0;
+
+            a_atual = a_atual->proxima_atividade;
+        }
+        atual = atual->proxima_etapa;
+    }
+    s->resumo = rs;
+    rs->s = s;
+    printf("Relatorios inicializados \n");
+}
+
+static int tempo_filas_atividades(produto *p)
+{
     int soma = 0;
-
-    atividade *atual = e->primeira_atividade;
-
+    evento_etapa *atual = p->historico_etapas;
     while (atual)
     {
-        soma += atual->tempo_de_processamento;
-        atual = atual->proxima_atividade;
+        evento_atividade *a_atual = atual->historico_atividades;
+        while (a_atual)
+        {   
+            if(a_atual->tick_fim_processamento != -1)// se a atividade ja foi concluida
+                soma += (a_atual->tick_inicio_processamento - a_atual->tick_fila);
+            a_atual = a_atual->proximo_evento;
+        }
+        atual = atual->proximo_evento;
     }
-
     return soma;
 }
 
-static float tempo_medio_na_etapa(etapa *e, pilha *produtos)
+static int em_linha(simulacao *s)
 {
-    if (!etapa_valida(e) || !pilha_valida(produtos))
-    {
+    if (!s->linha || !s->linha->primeira_etapa)
         return 0;
-    }
-
-    float soma = 0;
-    int quantidade = 0;
-
-    produto *p = produtos->topo;
-
-    while (p)
+    int soma = s->fila_entrada? s->fila_entrada->em_fila : 0;
+    
+    etapa *atual = s->linha->primeira_etapa;
+    while (atual)
     {
-        int tempo = buscar_tempo_na_etapa(p, e->id);
-
-        if (tempo >= 0)
-        {
-            soma += tempo;
-            quantidade++;
-        }
-
-        p = p->proximo_produto;
+        soma += atual->ocupacao;
+        atual = atual->proxima_etapa;
     }
-
-    if (quantidade == 0)
-    {
-        return 0;
-    }
-
-    return soma / quantidade;
-}
-
-static int tempo_maximo_na_etapa(etapa *e, pilha *produtos)
-{
-    if (!etapa_valida(e) || !pilha_valida(produtos))
-    {
-        return 0;
-    }
-
-    int maior = 0;
-
-    produto *p = produtos->topo;
-
-    while (p)
-    {
-        int tempo = buscar_tempo_na_etapa(p, e->id);
-
-        if (tempo > maior)
-        {
-            maior = tempo;
-        }
-
-        p = p->proximo_produto;
-    }
-
-    return maior;
-}
-
-static tempos tempo_medio_em_fila_por_etapa(etapa *e, pilha *produtos)
-{
-    tempos media;
-    media.tempo_em_fila_de_atividades = 0;
-    media.tempo_em_fila_de_prontos = 0;
-
-    if (!etapa_valida(e) || !pilha_valida(produtos))
-    {
-        return media;
-    }
-
-    float soma_fila_atividades = 0;
-    float soma_fila_prontos = 0;
-    int quantidade = 0;
-
-    produto *p = produtos->topo;
-
-    while (p)
-    {
-        tempos t = buscar_tempos_de_fila_na_etapa(p, e->id);
-
-        soma_fila_atividades += t.tempo_em_fila_de_atividades;
-        soma_fila_prontos += t.tempo_em_fila_de_prontos;
-
-        quantidade++;
-
-        p = p->proximo_produto;
-    }
-
-    if (quantidade == 0)
-    {
-        return media;
-    }
-
-    media.tempo_em_fila_de_atividades = soma_fila_atividades / quantidade;
-    media.tempo_em_fila_de_prontos = soma_fila_prontos / quantidade;
-
-    return media;
-}
-
-
-/* ============================================================
-   FUNÇÕES DE CÁLCULO POR ATIVIDADE
-   ============================================================ */
-   
-float tempo_medio_fila_atividade(atividade *a, pilha *produtos)
-{
-    if (!a || !produtos || produtos->em_pilha == 0)
-    {
-        return 0;
-    }
-
-    float soma_tempos = 0;
-    int produtos_contados = 0;
-
-    produto *p = produtos->topo;
-
-    while (p)
-    {
-        int tempo_produto = 0;
-        int passou_na_atividade = 0;
-
-        evento_etapa *ev_etapa = p->historico_etapas;
-
-        while (ev_etapa)
-        {
-            evento_atividade *ev_atividade = ev_etapa->historico_atividades;
-
-            while (ev_atividade)
-            {
-                if (ev_atividade->a == a)
-                {
-                    if (ev_atividade->tick_fila >= 0 && ev_atividade->tick_inicio_processamento >= 0)
-                    {
-                        tempo_produto += ev_atividade->tick_inicio_processamento - ev_atividade->tick_fila;
-
-                        passou_na_atividade = 1;
-                    }
-                }
-
-                ev_atividade = ev_atividade->proximo_evento;
-            }
-
-            ev_etapa = ev_etapa->proximo_evento;
-        }
-
-        if (passou_na_atividade)
-        {
-            soma_tempos += tempo_produto;
-            produtos_contados++;
-        }
-
-        p = p->proximo_produto;
-    }
-
-    if (produtos_contados == 0)
-    {
-        return 0;
-    }
-
-    return soma_tempos / produtos_contados;
-}
-
-/* ============================================================
-   FUNÇÕES QUE EXTRAEM INFORMAÇÕES DOS EVENTOS
-   ============================================================ */
-
-static int buscar_tempo_na_etapa(produto *p, int id_etapa)
-{
-    if (!p || !p->historico_etapas)
-    {
-        return -1;
-    }
-
-    int soma = 0;
-    int achou = 0;
-
-    evento_etapa *ev = p->historico_etapas;
-
-    while (ev)
-    {
-        if (ev->e && ev->e->id == id_etapa)
-        {
-            if (ev->tick_inicio >= 0 &&
-                ev->tick_fim >= 0)
-            {
-                soma += ev->tick_fim - ev->tick_inicio;
-                achou = 1;
-            }
-        }
-
-        ev = ev->proximo_evento;
-    }
-
-    if (!achou)
-    {
-        return -1;
-    }
-
-    return soma;
-}
-
-static tempos buscar_tempos_de_fila_na_etapa(produto *p, int id_etapa)
-{
-    tempos resultado;
-    resultado.tempo_em_fila_de_atividades = 0;
-    resultado.tempo_em_fila_de_prontos = 0;
-
-    if (!p || !p->historico_etapas)
-    {
-        return resultado;
-    }
-
-    int tentativas = 0;
-
-    evento_etapa *ev = p->historico_etapas;
-
-    while (ev)
-    {
-        if (ev->e && ev->e->id == id_etapa)
-        {
-            resultado.tempo_em_fila_de_atividades += buscar_tempo_em_fila_nas_atividades(ev);
-
-            if (ev->tick_conclusao >= 0 && ev->tick_fim >= 0)
-            {
-                resultado.tempo_em_fila_de_prontos += ev->tick_fim - ev->tick_conclusao;
-            }
-
-            tentativas++;
-        }
-
-        ev = ev->proximo_evento;
-    }
-
-    /*
-        Aqui existem duas opções:
-
-        1. Dividir por tentativas:
-           mede o tempo médio de fila por tentativa.
-
-        2. Não dividir:
-           mede o tempo total de fila do produto naquela etapa.
-
-        Para relatório "tempo médio que um produto passou em fila na etapa",
-        eu recomendo NÃO dividir por tentativas, porque retrabalho também
-        consumiu tempo real do produto.
-
-        Por isso deixei sem divisão.
-    */
-
-    return resultado;
-}
-
-static int buscar_tempo_em_fila_nas_atividades(evento_etapa *ev_etapa)
-{
-    if (!ev_etapa)
-    {
-        return 0;
-    }
-
-    int soma = 0;
-
-    evento_atividade *ev = ev_etapa->historico_atividades;
-
-    while (ev)
-    {
-        if (ev->tick_fila >= 0 &&  ev->tick_inicio_processamento >= 0)
-        {
-            soma += ev->tick_inicio_processamento - ev->tick_fila;
-        }
-
-        ev = ev->proximo_evento;
-    }
-
     return soma;
 }
 
 /* ============================================================
-   FUNÇÕES AUXILIARES
+   FUNÇAO DE LIBERAÇÃO
    ============================================================ */
 
-static int etapa_valida(etapa *e)
+static void liberar_resumos(simulacao *s)
 {
-    return (e != NULL);
+    resumo_simulacao *rs = s->resumo;
+
+    for (int i = 0; i < s->n_etapas; i++)
+    {
+        free(rs->resumos_etapas[i].resumos_atividades);
+    }
+    free(rs->resumos_etapas);
+    free(rs);
 }
 
-static int pilha_valida(pilha *p)
-{
-    return p != NULL && p->em_pilha > 0 && p->topo != NULL;
-}

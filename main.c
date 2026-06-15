@@ -1,32 +1,37 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include "structs.h"
-#include "construcao.h"
+#include "entrada.h"
 #include "execucao.h"
 #include "output.h"
+
 
 int main()
 {
     simulacao s;
-    inicializar_simulacao(&s);
+    
+    FILE *arquivo = fopen("C:\\Users\\felps\\Desktop\\ED_AJALMAR\\entrada.txt", "r");
+
+    if (arquivo == NULL)
+    {
+        printf("Erro ao abrir o arquivo.\n");
+        return 1;
+    }
+
+    lerEntrada(arquivo, &s);
+
+    fclose(arquivo);
+    
     srand(s.semente);
-    printf("testar relatorio e funcionamento normal\n");
     printf("Modo manual(1) ou automatico(0)?\n");
     scanf("%d", &s.MODO_MANUAL);
-
-    for(int i = 0 ; i < s.n_etapas; i ++)
-    {
-        criar_etapa(&s);
-    }
 
     simular(&s);//atentar para o tick maximo
 
     mostrar_pilha(s.concluidos, &s);
     mostrar_pilha(s.lixo, &s);
 
-    mostrar_metadados(&s);
-    mostrar_relatorio_etapas(&s);
-    mostrar_relatorio_atividades(&s);
-    
+    opcoes_finais(&s);
+
     encerrar_simulacao(&s);
 }
