@@ -458,11 +458,16 @@ void inicializar_resumos(simulacao *s)
         return;
     }
     resumo_simulacao *rs = malloc(sizeof(resumo_simulacao));
+    if (!rs)
+    {
+        printf("Erro ao alocar memoria para relatorios \n");
+        encerrar_simulacao(s);
+    }
     rs->resumos_etapas = malloc(s->n_etapas * sizeof(resumo_etapa));
     if (!rs->resumos_etapas)
     {
         printf("Erro ao alocar memoria para relatorios \n");
-        exit(0);
+        encerrar_simulacao(s);
     }
     // resumos_etapas agora é um vetor de resumo_etapa
     etapa *atual = s->linha->primeira_etapa;
@@ -475,7 +480,7 @@ void inicializar_resumos(simulacao *s)
         if (!re->resumos_atividades)
         {
             printf("Erro ao alocar memoria para relatorios \n");
-            exit(0);
+            encerrar_simulacao(s);
         }
         // resumos_atividades agora é um vetor de resumo_atividade
         atual->resumo->soma_tempo_fila_prontos = 0;

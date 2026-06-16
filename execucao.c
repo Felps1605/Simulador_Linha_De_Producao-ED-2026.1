@@ -11,7 +11,7 @@
   PROTOTIPOS PRIVADOS
   ----------------------*/
 
-void enfileirar(produto *p, fila **f);
+void enfileirar(produto *p, fila **f, simulacao *s);
 void empilhar(produto *p, pilha **pp, simulacao *s);
 void criar_produto(simulacao *s);
 produto *desenfileirar(fila *f);
@@ -237,7 +237,6 @@ void opcoes_finais(simulacao *s)
         {
             encerrar_simulacao(s);
         }
-        exit(0);//redundante
         
         default:
         {
@@ -526,7 +525,6 @@ void opcoes(simulacao *s)
         {
             encerrar_simulacao(s);
         }
-        exit(0);//redundante
         
         default:
         {
@@ -542,7 +540,7 @@ noa * criar_noa(produto *p)
     noa * novo = malloc(sizeof(noa));
     if(!novo){
         printf("Erro ao alocar memoria\n");
-        exit (1);
+        return NULL;
     }
     novo->p = p;
     novo->esq = NULL;
@@ -628,7 +626,7 @@ void liberar_arvore(noa ** raiz)
     }
 }
 
-void enfileirar(produto *p, fila **f)
+void enfileirar(produto *p, fila **f, simulacao *s)
 {   
     
     if (*f == NULL)
@@ -638,7 +636,7 @@ void enfileirar(produto *p, fila **f)
         if (!*f)
         {
             printf("\n\nErro ao alocar memória! \n\n");
-            exit(1);
+            encerrar_simulacao(s);
         }
         (*f)->inicio = NULL;
         (*f)->fim = NULL;
@@ -664,7 +662,7 @@ void empilhar(produto *p, pilha **pp, simulacao * s)
         if (!*pp)
         {
             printf("\n\nErro ao alocar memória! \n\n");
-            exit(1);
+            encerrar_simulacao(s);
         }
         (*pp)->topo = NULL;
         (*pp)->base = NULL;
@@ -691,7 +689,7 @@ void criar_produto(simulacao *s)
     if (!novo)
     {
         printf("\n\nErro ao alocar memória! \n\n");
-        exit(1);
+        encerrar_simulacao(s);
     }
     novo->proximo_produto = NULL;
     novo->atividade_atual = NULL;
@@ -712,7 +710,7 @@ void criar_produto(simulacao *s)
 
     s->produto_id++;
     s->produtos_criados++;
-    enfileirar(novo, &s->fila_entrada);
+    enfileirar(novo, &s->fila_entrada, s);
     s->em_linha = inserir_noa(s->em_linha, novo);
     printf("Produto %d criado e adicionado no final da fila \n", novo->id);
 }
@@ -848,7 +846,7 @@ void pegar_produto_etapa(etapa *e, simulacao *s)
         return;
     }
     atividade *a = e->primeira_atividade;
-    enfileirar(p, &a->f); // coloca o produto na fila de entrada da primeira atividade da etapa
+    enfileirar(p, &a->f, s); // coloca o produto na fila de entrada da primeira atividade da etapa
     p->atividade_atual = a;
     p->etapa_atual = e;
     e->ocupacao++;
@@ -891,7 +889,7 @@ int verificar_defeitos(produto *p, simulacao *s)
         }
         printf("Produto %d processado com falha recuperável, redirecionado para o começo da etapa %d\n", p->id, p->atividade_atual->etapa_dona->id);
         p->defeituoso = 0;
-        enfileirar(p, &(e->primeira_atividade->f)); 
+        enfileirar(p, &(e->primeira_atividade->f), s); 
         p->atividade_atual = e->primeira_atividade;
         registrar_inicio_etapa(p, s);
         return 1;
@@ -907,7 +905,7 @@ void avancar_produto(atividade *a, produto *p, simulacao *s)
     
     if (a->proxima_atividade)
     {
-        enfileirar(p, &a->proxima_atividade->f); // coloca o produto na fila de entrada da proxima atividade
+        enfileirar(p, &a->proxima_atividade->f, s); // coloca o produto na fila de entrada da proxima atividade
         printf("Produto %d colocado na fila de entrada da proxima atividade (%d)\n", p->id, a->proxima_atividade->id);
         p->atividade_atual = a->proxima_atividade;
         registrar_inicio_atividade(p, s);
@@ -919,7 +917,7 @@ void avancar_produto(atividade *a, produto *p, simulacao *s)
     if (a->etapa_dona->proxima_etapa)
     {
         printf("Enfileirando produto %d na fila de prontos da etapa\n", p->id);
-        enfileirar(p, &a->etapa_dona->f);
+        enfileirar(p, &a->etapa_dona->f, s);
         return;
     }
     printf("Produto %d concluiu a ultima etapa do processo\n", p->id);
@@ -1204,7 +1202,7 @@ void registrar_inicio_etapa(produto *p, simulacao *s)
     if (!evento)
     {
         printf("\n\nErro ao alocar memória! \n\n");
-        exit(1);
+        encerrar_simulacao(s);
     }
     evento->e = p->etapa_atual;
     evento->tick_inicio = s->tick_atual;
@@ -1240,7 +1238,7 @@ void registrar_inicio_atividade(produto *p, simulacao *s)
     if (!evento)
     {
         printf("\n\nErro ao alocar memória! \n\n");
-        exit(1);
+        encerrar_simulacao(s);
     }
     evento->a = p->atividade_atual;
     evento->falhou = 0;
