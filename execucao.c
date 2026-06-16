@@ -51,6 +51,7 @@ noa * remover_noa(noa * raiz, int id);
 void liberar_arvore(noa ** raiz);
 void liberar_historico(produto *p);
 void liberar_produto(produto * p);
+
 /*-----------------------
   FUNCÕES PUBLICAS
   ----------------------*/
@@ -63,8 +64,9 @@ void opcoes_finais(simulacao *s)
     preencher_resumos(s->resumo, s->concluidos);
 
     while (1)
-    {
-        int opcao;
+    {   
+        limpar_buffer();
+        int opcao = -1;
         
         printf("Opcoes:\n");
         printf("1 - Mostrar etapas e atividades\n");
@@ -73,6 +75,7 @@ void opcoes_finais(simulacao *s)
         printf("4 - Mostrar historico de produto\n");
         printf("5 - Imprimir relatorio\n");
         printf("6 - Sair do programa\n");
+        
         
         scanf(" %d", &opcao);
         switch (opcao)
@@ -85,7 +88,8 @@ void opcoes_finais(simulacao *s)
        
         case 2:
         {
-            int op_fila;
+            limpar_buffer();
+            int op_fila = -1;
             printf("Mostrar qual fila?\n");
             printf("1 - Fila de entrada\n");
             printf("2 - Fila de prontos de etapa\n");
@@ -99,6 +103,7 @@ void opcoes_finais(simulacao *s)
                 break;
             case 2:
             {
+                limpar_buffer();
                 int id;
                 printf("Digite o id da etapa: ");
                 scanf("%d", &id);
@@ -111,6 +116,7 @@ void opcoes_finais(simulacao *s)
             }
             case 3:
             {
+                limpar_buffer();
                 int id;
                 printf("Digite o id da atividade: ");
                 scanf("%d", &id);
@@ -131,15 +137,33 @@ void opcoes_finais(simulacao *s)
         
         case 3:
         {
-            int op;
-            printf("Pilha de concluidos ou lixo? (1 - concluidos, 2 - lixo): ");
-            scanf("%d", &op);
-            mostrar_pilha(op == 1 ? s->concluidos : s->lixo, s);
+            while(1){
+                limpar_buffer();
+                int op = -1;
+                printf("Pilha de concluidos ou lixo? (1 - concluidos, 2 - lixo): ");
+                scanf("%d", &op);
+                switch (op)
+                {
+                    case 1:{
+                        mostrar_pilha(s->concluidos, s);
+                        break;
+                    }
+                    case 2:{
+                        mostrar_pilha(s->lixo, s);
+                        break;
+                    }
+                    default:{
+                        printf("Opcao invalida\n");
+                    }
+                }
+               break;     
+            }
+            
         }
         break;
         case 4:
         {
-            
+            limpar_buffer();
             int id;
             printf("Digite o id do produto que deseja visualizar: \n");
             scanf("%d", &id);
@@ -160,7 +184,8 @@ void opcoes_finais(simulacao *s)
         break;
         case 5:
         {
-            int relatorio;
+            limpar_buffer();
+            int relatorio = -1;
             printf("Mostrar qual relatorio?\n");
             printf("1 - Metadados\n");
             printf("2 - Relatorio de Etapas\n");
@@ -319,6 +344,11 @@ void mostrar_pilha(pilha *p, simulacao *s)
     printf("\n");
 }
 
+void limpar_buffer() {
+    char c;
+    while ((c = getchar()) != '\n' && c != EOF);
+}
+
 void encerrar_simulacao(simulacao *s)
 {
     printf("Liberando memoria\n");
@@ -333,8 +363,6 @@ void encerrar_simulacao(simulacao *s)
     exit(0);
 }
 
-
-
 /*-----------------------
   FUNCÕES AUXILIARES
   ----------------------*/
@@ -342,17 +370,19 @@ void encerrar_simulacao(simulacao *s)
 void opcoes(simulacao *s)
 {
     while (1)
-    {
-        int opcao;
+    {   
+        limpar_buffer();
+        int opcao = -1;
         printf("Opcoes:\n");
         printf("1 - Mostrar etapas e atividades\n");
         printf("2 - Mostrar fila\n");
         printf("3 - Mostrar pilha\n");
         printf("4 - Mostrar historico de produto\n");
-        printf("5 - Continuar simulacao\n");
-        printf("6 - Encerrar simulacao prematuramente\n");
-        printf("7 - Alternar modo manual/automatico (atualmente %s)\n", s->MODO_MANUAL ? "manual" : "automatico");
-        printf("8 - Sair do programa\n");
+        printf("5 - Mostrar historicos de produtos\n");
+        printf("6 - Continuar simulacao\n");
+        printf("7 - Encerrar simulacao prematuramente\n");
+        printf("8 - Alternar modo manual/automatico (atualmente %s)\n", s->MODO_MANUAL ? "manual" : "automatico");
+        printf("9 - Sair do programa\n");
         
         scanf(" %d", &opcao);
         switch (opcao)
@@ -364,13 +394,14 @@ void opcoes(simulacao *s)
         break;
        
         case 2:
-        {
-            int op_fila;
+        {   limpar_buffer();
+            int op_fila = -1;
             printf("Mostrar qual fila?\n");
             printf("1 - Fila de entrada\n");
             printf("2 - Fila de prontos de etapa\n");
             printf("3 - Fila de entrada de atividade\n");
             printf("4 - Voltar\n");
+            
             scanf("%d", &op_fila);
             switch (op_fila)
             {
@@ -378,9 +409,11 @@ void opcoes(simulacao *s)
                 mostrar_fila(s->fila_entrada);
                 break;
             case 2:
-            {
+            {   
+                limpar_buffer();
                 int id;
                 printf("Digite o id da etapa: ");
+                
                 scanf("%d", &id);
                 etapa *et = buscar_etapa(s->linha, id);
                 if (et)
@@ -391,8 +424,10 @@ void opcoes(simulacao *s)
             }
             case 3:
             {
+                limpar_buffer();
                 int id;
                 printf("Digite o id da atividade: ");
+                
                 scanf("%d", &id);
                 atividade *a = buscar_atividade(s->linha, id);
                 if (a)
@@ -410,17 +445,36 @@ void opcoes(simulacao *s)
         break;
         
         case 3:
-        {
-            int op;
-            printf("Pilha de concluidos ou lixo? (1 - concluidos, 2 - lixo): ");
-            scanf("%d", &op);
-            mostrar_pilha(op == 1 ? s->concluidos : s->lixo, s);
+        {   
+            while(1){
+                limpar_buffer();
+                int op = -1;
+                printf("Pilha de concluidos ou lixo? (1 - concluidos, 2 - lixo): ");
+                scanf("%d", &op);
+                switch (op)
+                {
+                    case 1:{
+                        mostrar_pilha(s->concluidos, s);
+                        break;
+                    }
+                    case 2:{
+                        mostrar_pilha(s->lixo, s);
+                        break;
+                    }
+                    default:{
+                        printf("Opcao invalida\n");
+                    }
+                }
+               break;     
+            }
         }
         break;
         case 4:
-        {
+        {   
+            limpar_buffer();
             int id;
             printf("Digite o id do produto que deseja visualizar: \n");
+            
             scanf("%d", &id);
             noa * raiz = s->em_linha;
             raiz = buscar_noa(raiz, id);
@@ -439,12 +493,17 @@ void opcoes(simulacao *s)
         break;
         case 5:
         {
+            imprimir_relatorio_produtos(s);
+        }
+        break;
+        case 6:
+        {
             contagem_regressiva("Continuando simulacao em");
             return;
         }
         break;
 
-        case 6:
+        case 7:
         {
             
             printf("Simulacao Encerrada\n");
@@ -453,14 +512,14 @@ void opcoes(simulacao *s)
         }
         break;
         
-        case 7:
+        case 8:
         {
             s->MODO_MANUAL = !s->MODO_MANUAL;
             printf("Modo manual %s\n", s->MODO_MANUAL ? "ativado" : "desativado");
         }
         break;
         
-        case 8:
+        case 9:
         {
             encerrar_simulacao(s);
         }
@@ -483,7 +542,6 @@ noa * criar_noa(produto *p)
     novo->dir = NULL;
     return novo;
 }
-
 noa * inserir_noa(noa *raiz, produto *p)
 {
     if(!raiz)
@@ -500,7 +558,6 @@ noa * inserir_noa(noa *raiz, produto *p)
 
     return raiz;
 }
-
 noa * buscar_noa(noa * raiz, int id)
 {
     if(!raiz || raiz->p->id == id)
@@ -511,7 +568,6 @@ noa * buscar_noa(noa * raiz, int id)
 
     return buscar_noa(raiz->dir, id); 
 }
-
 noa * remover_noa(noa * raiz, int id)
 {
     if(!raiz)
@@ -554,7 +610,6 @@ noa * remover_noa(noa * raiz, int id)
     }
        
 }
-
 void liberar_arvore(noa ** raiz)
 {   
     if(*raiz)
@@ -565,7 +620,6 @@ void liberar_arvore(noa ** raiz)
         *raiz = NULL;
     }
 }
-
 
 void enfileirar(produto *p, fila **f)
 {   
@@ -725,7 +779,7 @@ void mostrar_atividades(atividade *primeira)
     {
         printf("    %s\n", atual->nome);
 
-        printf("    Fila de entrada: %d produtos\n", (atual->f ? atual->f->em_fila : 0));
+        printf("       Fila de entrada: %d produtos\n", (atual->f ? atual->f->em_fila : 0));
 
         for (int i = 0; i < atual->capacidade_max; i++)
         {
@@ -907,7 +961,6 @@ void envelhecer_atividade(atividade *a)
     }
 }
 
-
 void liberar_fila(fila *f)
 {
     if (!f)
@@ -1006,6 +1059,7 @@ void liberar_historico(produto *p)
         free(aux);
     }
 }
+
 etapa *buscar_etapa(etapas *e, int id)
 {
     if (!e)
@@ -1068,6 +1122,7 @@ int ha_produtos_para_entrar_atividade(atividade *a)
 {
     return (a->f && a->f->em_fila > 0);
 }
+
 void envelhecer_produtos(simulacao *s)
 {
     etapa *atual_etapa = s->linha->primeira_etapa;
@@ -1203,3 +1258,4 @@ int tempo_limite_excedido(simulacao *s)
         s->tempo_excedido = 1;
     return s->tempo_excedido;
 }
+

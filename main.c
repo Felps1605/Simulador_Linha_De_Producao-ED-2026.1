@@ -23,6 +23,7 @@ int main()
     fclose(arquivo);
     
     srand(s.semente);
+    
     printf("Modo manual(1) ou automatico(0)?\n");
     scanf("%d", &s.MODO_MANUAL);
 

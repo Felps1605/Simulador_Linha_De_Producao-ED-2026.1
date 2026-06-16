@@ -73,22 +73,7 @@ void relatorio_simulacao(simulacao *s)//cria o relatorio completo em forma de ar
     printf("Relatorio salvo em: %s\n", nome_arquivo);
 
 }
-/*
-void relatorio_simulacao(simulacao *s)
-{
 
-    inicializar_resumos(s);
-    preencher_resumos(s->resumo, s->concluidos); // por enquanto calcula so com os concluidos, mas depois dá pra trocar por uma pilha com todos os produtos
-
-    // futuramente imprimir no terminal e no arquivo de saida
-    imprimir_metadados(s);
-    imprimir_relatorio_etapas(s);
-    imprimir_relatorio_atividades(s);
-    //imprimir_relatorio_produtos(s);
-
-    liberar_resumos(s);
-}
-*/
 void imprimir_metadados(simulacao *s)
 {
     if (!s)
@@ -114,6 +99,18 @@ void imprimir_metadados(simulacao *s)
     printf("Produtos concluidos: %d\n", s->produtos_concluidos);
 
     printf("Produtos criados: %d\n", s->produtos_criados);
+    
+    printf("Falhas_totais: %d\n", s->falhas_totais);
+    
+    if(s->tempo_excedido){
+        printf("Tempo limite atingido\n");
+        printf("Produtos em linha: %d \n", em_linha(s) );
+    }
+
+    if(!s->resumo){
+        //printf("Nao foi possivel calcular as metricas restantes\n");
+        return;
+    }
 
     printf("Tempo medio na linha: %.2f\n", s->resumo->tempo_medio_total);
 
@@ -123,21 +120,17 @@ void imprimir_metadados(simulacao *s)
 
     printf("    Tempo medio na fila de entrada: %.2f\n", s->resumo->tempo_medio_na_fila_entrada);
 
-    printf("    Tempo medio total nas filas de atividades: %.2f\n", s->resumo->tempo_medio_filas_atividades);
+    printf("    Tempo medio total nas filas da linha: %.2f\n", s->resumo->tempo_medio_filas_atividades);
 
     printf("  Tempo medio em retrabalho: %.2f\n", s->resumo->tempo_medio_retrabalho);
 
-    printf("Falhas_totais: %d\n", s->falhas_totais);
+    
 
     printf("Meta alcancada(%.1f): %s\n", s->meta, s->resumo->meta_alcancada ? "SIM" : "NAO");
 
     if (!s->resumo->meta_alcancada)
         printf("Produtos faltantes: %.0f\n", s->meta - s->produtos_concluidos);
-    if(s->tempo_excedido){
-        printf("Tempo limite atingido\n");
-        printf("Produtos em linha: %d \n", em_linha(s) );
-    }
-
+    
 
 }
 
@@ -175,6 +168,12 @@ void imprimir_relatorio_etapas(simulacao *s)
         printf("\tQuantidade de produtos que entraram: %d\n", atual->qtd_produtos_entraram);
 
         printf("\tQuantidade de produtos concluidos: %d\n", atual->qtd_produtos_concluidos);
+
+        if(!s->resumo || !atual->resumo){
+            //printf("Nao foi possivel calcular as metricas restantes\n");
+            atual = atual->proxima_etapa;
+            continue;
+        }
 
         printf("\tMedia de falhas por produto: %.2f\n", atual->resumo->falhas_por_produto);
 
@@ -227,6 +226,12 @@ void imprimir_relatorio_atividades(simulacao *s)
 
             printf("\tFailrate: %.2f\n", a_atual->failrate);
 
+            if(!s->resumo || !a_atual->resumo){
+            //printf("Nao foi possivel calcular as metricas restantes\n");
+            a_atual = a_atual->proxima_atividade;
+            continue;
+        }
+
             printf("\tTempo medio total:  %.2f\n", a_atual->resumo->tempo_medio_total);
 
             printf("\t  Tempo de execucao: %d \n", a_atual->tempo_de_processamento);
@@ -243,14 +248,23 @@ void imprimir_relatorio_atividades(simulacao *s)
 
 void imprimir_relatorio_produtos(simulacao *s)
 {   
-    if(!s || !s->finalizados)
+    if(!s){
+        printf("Simulacao invalida\n");
         return;
+    }
+        
     printf("\n-------RELATORIO DE PRODUTOS--------\n");
     mostrar_arvore(s , s->finalizados);
+    printf("\nRELATORIO DE PRODUTOS EM LINHA\n");
+    mostrar_arvore(s, s->em_linha);
 }
 
 void imprimir_historico_produto(simulacao *s, produto *p)
-{
+{   
+    if(!s){
+        printf("Simulacao invalida\n");
+        return;
+    }
     if (!p)
     {
         printf("Produto nao encontrado\n");
@@ -299,11 +313,12 @@ void imprimir_historico_produto(simulacao *s, produto *p)
 
 void preencher_resumos(resumo_simulacao *rs, pilha *produtos)
 { // percorre cada evento de atividade de cada evento etapa e de cada produto e preenche os resumos
-    printf("Iniciando preenchimento de relatorios \n");
-    if(!produtos){
-        printf("Pilha de concluidos vazia, nao e possivel fazer relatorios\n");
-        encerrar_simulacao(rs->s);
+    if(!rs)
+    {
+        //printf("Sem relatorios a preencher\n");
+        return;
     }
+    printf("Iniciando preenchimento de relatorios \n");
     produto *p = produtos->topo;
     float soma_tempo_medio_total = 0;
     float soma_tempo_fila_entrada = 0;
@@ -436,6 +451,12 @@ void preencher_resumos(resumo_simulacao *rs, pilha *produtos)
 void inicializar_resumos(simulacao *s)
 {
     printf("Inicializando relatorios \n");
+    if(!s->concluidos)
+    {
+        printf("Relatorios simplificados inicializados\n");
+        s->resumo = NULL;//so pra garantir
+        return;
+    }
     resumo_simulacao *rs = malloc(sizeof(resumo_simulacao));
     rs->resumos_etapas = malloc(s->n_etapas * sizeof(resumo_etapa));
     if (!rs->resumos_etapas)
@@ -534,41 +555,39 @@ static void imprimir_metadados_arquivo(FILE *arquivo, simulacao *s)
 
     fprintf(arquivo, "Produtos criados: %d\n", s->produtos_criados);
 
-    fprintf(arquivo, "Tempo medio na linha: %.2f\n",
-            s->resumo->tempo_medio_total);
-
-    fprintf(arquivo, "  Tempo minimo na linha: %d\n",
-            s->resumo->tempo_minimo);
-
-    fprintf(arquivo, "  Tempo medio em espera: %.2f\n",
-            s->resumo->tempo_medio_em_espera);
-
-    fprintf(arquivo, "    Tempo medio na fila de entrada: %.2f\n",
-            s->resumo->tempo_medio_na_fila_entrada);
-
-    fprintf(arquivo, "    Tempo medio total nas filas de atividades: %.2f\n",
-            s->resumo->tempo_medio_filas_atividades);
-
-    fprintf(arquivo, "  Tempo medio em retrabalho: %.2f\n",
-            s->resumo->tempo_medio_retrabalho);
-
     fprintf(arquivo, "Falhas_totais: %d\n", s->falhas_totais);
-
-    fprintf(arquivo, "Meta alcancada(%.1f): %s\n",
-            s->meta,
-            s->resumo->meta_alcancada ? "SIM" : "NAO");
-
-    if (!s->resumo->meta_alcancada)
-    {
-        fprintf(arquivo, "Produtos faltantes: %.0f\n",
-                s->meta - s->produtos_concluidos);
-    }
-
+    
     if (s->tempo_excedido)
     {
         fprintf(arquivo, "Tempo limite atingido\n");
         fprintf(arquivo, "Produtos em linha: %d \n", em_linha(s));
     }
+
+    if(!s->resumo)
+    {
+        //fprintf(arquivo, "Nao foi possivel calcular as metricas restantes.\n");
+        return;
+    }
+
+    fprintf(arquivo, "Tempo medio na linha: %.2f\n", s->resumo->tempo_medio_total);
+
+    fprintf(arquivo, "  Tempo minimo na linha: %d\n", s->resumo->tempo_minimo);
+
+    fprintf(arquivo, "  Tempo medio em espera: %.2f\n", s->resumo->tempo_medio_em_espera);
+
+    fprintf(arquivo, "    Tempo medio na fila de entrada: %.2f\n", s->resumo->tempo_medio_na_fila_entrada);
+
+    fprintf(arquivo, "    Tempo medio total nas filas da linha: %.2f\n", s->resumo->tempo_medio_filas_atividades);
+
+    fprintf(arquivo, "  Tempo medio em retrabalho: %.2f\n", s->resumo->tempo_medio_retrabalho);
+
+    fprintf(arquivo, "Meta alcancada(%.1f): %s\n", s->meta, s->resumo->meta_alcancada ? "SIM" : "NAO");
+
+    if (!s->resumo->meta_alcancada)
+    {
+        fprintf(arquivo, "Produtos faltantes: %.0f\n", s->meta - s->produtos_concluidos);
+    }
+
 }
 
 static void imprimir_relatorio_etapas_arquivo(FILE *arquivo, simulacao *s)
@@ -596,45 +615,38 @@ static void imprimir_relatorio_etapas_arquivo(FILE *arquivo, simulacao *s)
 
     while (atual)
     {
-        fprintf(arquivo, "\nETAPA %d, %s:\n",
-                atual->id,
-                atual->nome);
+        fprintf(arquivo, "\nETAPA %d, %s:\n", atual->id, atual->nome);
 
-        fprintf(arquivo, "\tAtividades: %d\n",
-                atual->num_atividades);
+        fprintf(arquivo, "\tAtividades: %d\n", atual->num_atividades);
 
-        fprintf(arquivo, "\tCapacidade total: %d\n",
-                atual->capacidade_max);
+        fprintf(arquivo, "\tCapacidade total: %d\n", atual->capacidade_max);
 
-        fprintf(arquivo, "\tFalhas totais: %d\n",
-                atual->falhas);
+        fprintf(arquivo, "\tFalhas totais: %d\n", atual->falhas);
 
-        fprintf(arquivo, "\tFailrate: %.2f\n",
-                atual->failrate);
+        fprintf(arquivo, "\tFailrate: %.2f\n", atual->failrate);
 
-        fprintf(arquivo, "\tQuantidade de produtos que entraram: %d\n",
-                atual->qtd_produtos_entraram);
+        fprintf(arquivo, "\tQuantidade de produtos que entraram: %d\n", atual->qtd_produtos_entraram);
 
-        fprintf(arquivo, "\tQuantidade de produtos concluidos: %d\n",
-                atual->qtd_produtos_concluidos);
+        fprintf(arquivo, "\tQuantidade de produtos concluidos: %d\n", atual->qtd_produtos_concluidos);
 
-        fprintf(arquivo, "\tMedia de falhas por produto: %.2f\n",
-                atual->resumo->falhas_por_produto);
+        if(!s->resumo || !atual->resumo)
+        {
+            //fprintf(arquivo, "Nao foi possivel calcular as metricas restantes.\n");
+            atual = atual->proxima_etapa;
+            continue;
+        }
 
-        fprintf(arquivo, "\tTempo medio: %.2f\n",
-                atual->resumo->tempo_medio);
+        fprintf(arquivo, "\tMedia de falhas por produto: %.2f\n", atual->resumo->falhas_por_produto);
 
-        fprintf(arquivo, "\t  Tempo minimo: %d\n",
-                atual->resumo->tempo_minimo);
+        fprintf(arquivo, "\tTempo medio: %.2f\n", atual->resumo->tempo_medio);
 
-        fprintf(arquivo, "\t  Tempo medio total em filas de atividade: %.2f\n",
-                atual->resumo->tempo_medio_filas_atividades);
+        fprintf(arquivo, "\t  Tempo minimo: %d\n", atual->resumo->tempo_minimo);
 
-        fprintf(arquivo, "\t  Tempo medio na fila de prontos da etapa: %.2f\n",
-                atual->resumo->tempo_medio_fila_prontos);
+        fprintf(arquivo, "\t  Tempo medio total em filas de atividade: %.2f\n", atual->resumo->tempo_medio_filas_atividades);
 
-        fprintf(arquivo, "\tMaior tempo: %d\n",
-                atual->resumo->maior_tempo);
+        fprintf(arquivo, "\t  Tempo medio na fila de prontos da etapa: %.2f\n", atual->resumo->tempo_medio_fila_prontos);
+
+        fprintf(arquivo, "\tMaior tempo: %d\n", atual->resumo->maior_tempo);
 
         atual = atual->proxima_etapa;
     }
@@ -665,41 +677,36 @@ static void imprimir_relatorio_atividades_arquivo(FILE *arquivo, simulacao *s)
 
     while (e_atual)
     {
-        fprintf(arquivo, "\nETAPA %d, %s:\n",
-                e_atual->id,
-                e_atual->nome);
+        fprintf(arquivo, "\nETAPA %d, %s:\n", e_atual->id, e_atual->nome);
 
         atividade *a_atual = e_atual->primeira_atividade;
 
         while (a_atual)
         {
-            fprintf(arquivo, "\n  ATIVIDADE %d, %s:\n",
-                    a_atual->id,
-                    a_atual->nome);
+            fprintf(arquivo, "\n  ATIVIDADE %d, %s:\n", a_atual->id, a_atual->nome);
 
-            fprintf(arquivo, "\tCapacidade: %d \n",
-                    a_atual->capacidade_max);
+            fprintf(arquivo, "\tCapacidade: %d \n", a_atual->capacidade_max);
 
-            fprintf(arquivo, "\t  Capacidade por Unidade Funcional: %d\n",
-                    a_atual->capacidade_max / a_atual->qtd_uf);
+            fprintf(arquivo, "\t  Capacidade por Unidade Funcional: %d\n", a_atual->capacidade_max / a_atual->qtd_uf);
 
-            fprintf(arquivo, "\t  Quantidade de Unidades Funcionais: %d\n",
-                    a_atual->qtd_uf);
+            fprintf(arquivo, "\t  Quantidade de Unidades Funcionais: %d\n", a_atual->qtd_uf);
 
-            fprintf(arquivo, "\tFailrate: %.2f\n",
-                    a_atual->failrate);
+            fprintf(arquivo, "\tFailrate: %.2f\n", a_atual->failrate);
 
-            fprintf(arquivo, "\tTempo medio total:  %.2f\n",
-                    a_atual->resumo->tempo_medio_total);
+            if(!s->resumo || !a_atual->resumo)
+            {
+                //fprintf(arquivo, "Nao foi possivel calcular as metricas restantes.\n");
+                a_atual = a_atual->proxima_atividade;
+                continue;
+            }
 
-            fprintf(arquivo, "\t  Tempo de execucao: %d \n",
-                    a_atual->tempo_de_processamento);
+            fprintf(arquivo, "\tTempo medio total:  %.2f\n", a_atual->resumo->tempo_medio_total);
 
-            fprintf(arquivo, "\t  Tempo medio em fila: %.2f\n",
-                    a_atual->resumo->tempo_medio_na_fila);
+            fprintf(arquivo, "\t  Tempo de execucao: %d \n", a_atual->tempo_de_processamento);
 
-            fprintf(arquivo, "\tMaior Tempo: %d \n ",
-                    a_atual->resumo->maior_tempo);
+            fprintf(arquivo, "\t  Tempo medio em fila: %.2f\n", a_atual->resumo->tempo_medio_na_fila);
+
+            fprintf(arquivo, "\tMaior Tempo: %d \n ", a_atual->resumo->maior_tempo);
 
             a_atual = a_atual->proxima_atividade;
         }
@@ -710,11 +717,19 @@ static void imprimir_relatorio_atividades_arquivo(FILE *arquivo, simulacao *s)
 
 static void imprimir_relatorio_produtos_arquivo(FILE *arquivo, simulacao *s)
 {
-    if (!arquivo || !s || !s->finalizados)
+    if (!arquivo)
+    {
         return;
-
+    }
+    if (!s)
+    {
+        fprintf(arquivo, "Linha invalida!\n");
+        return;
+    }
     fprintf(arquivo, "\n-------RELATORIO DE PRODUTOS--------\n");
     mostrar_arvore_arquivo(arquivo, s, s->finalizados);
+    fprintf(arquivo, "\nRELATORIO DE PRODUTOS EM LINHA\n");
+    mostrar_arvore_arquivo(arquivo, s, s->em_linha);
     
 }
 
@@ -744,25 +759,17 @@ static void imprimir_historico_produto_arquivo(FILE *arquivo, simulacao *s, prod
 
         int tempo_filas_atividade = tempo_filas_atividades(p);
 
-        fprintf(arquivo, "Tempo Total no Sistema: %d \n",
-                p->tick_saida_linha - p->tick_criacao);
+        fprintf(arquivo, "Tempo Total no Sistema: %d \n", p->tick_saida_linha - p->tick_criacao);
 
-        fprintf(arquivo, "  Tempo na fila de entrada: %d \n",
-                p->tick_entrada_linha - p->tick_criacao);
+        fprintf(arquivo, "  Tempo na fila de entrada: %d \n", p->tick_entrada_linha - p->tick_criacao);
 
-        fprintf(arquivo, "  Tempo na linha: %d \n",
-                p->tick_saida_linha - p->tick_entrada_linha);
+        fprintf(arquivo, "  Tempo na linha: %d \n", p->tick_saida_linha - p->tick_entrada_linha);
 
-        fprintf(arquivo, "    Filas de atividade: %d \n",
-                tempo_filas_atividade);
+        fprintf(arquivo, "    Filas de atividade: %d \n", tempo_filas_atividade);
 
-        fprintf(arquivo, "    Processamento e Retrabalho : %d \n",
-                (p->tick_saida_linha - p->tick_entrada_linha)
-                - tempo_filas_atividade);
+        fprintf(arquivo, "    Processamento e Retrabalho : %d \n", (p->tick_saida_linha - p->tick_entrada_linha) - tempo_filas_atividade);
 
-        fprintf(arquivo, "Tempo Total em espera: %d \n",
-                tempo_filas_atividade +
-                (p->tick_entrada_linha - p->tick_criacao));
+        fprintf(arquivo, "Tempo Total em espera: %d \n", tempo_filas_atividade + (p->tick_entrada_linha - p->tick_criacao));
     }
     else if (p->tick_saida_linha < 0)
     {
@@ -801,34 +808,21 @@ static void trajetoria_arquivo(FILE *arquivo, produto *p)
 
     while (atual)
     {
-        fprintf(arquivo, "Etapa %d %s tentativa %d\n",
-                atual->e->id,
-                atual->e->nome,
-                atual->tentativa);
+        fprintf(arquivo, "Etapa %d %s tentativa %d\n", atual->e->id, atual->e->nome, atual->tentativa);
 
         evento_atividade *a_atual = atual->historico_atividades;
 
         while (a_atual)
         {
-            fprintf(arquivo,
-                    "Atividade %d %s fila: %d inicio: %d conclusao: %d  %s\n",
-                    a_atual->a->id,
-                    a_atual->a->nome,
-                    a_atual->tick_fila,
-                    a_atual->tick_inicio_processamento,
-                    a_atual->tick_fim_processamento,
-                    a_atual->falhou ? "FALHOU" : "OK");
-
+            fprintf(arquivo, "Atividade %d %s fila: %d inicio: %d conclusao: %d  %s\n", a_atual->a->id, a_atual->a->nome, a_atual->tick_fila, a_atual->tick_inicio_processamento, a_atual->tick_fim_processamento,  a_atual->falhou ? "FALHOU" : "OK");
             a_atual = a_atual->proximo_evento;
         }
 
         if (!atual->falhou)
         {
-            fprintf(arquivo, "Tempo na etapa: %d\n",
-                    atual->tick_fim - atual->tick_inicio);
+            fprintf(arquivo, "Tempo na etapa: %d\n", atual->tick_fim - atual->tick_inicio);
 
-            fprintf(arquivo, "  Tempo na fila de prontos da etapa: %d\n",
-                    atual->tick_fim - atual->tick_conclusao);
+            fprintf(arquivo, "  Tempo na fila de prontos da etapa: %d\n", atual->tick_fim - atual->tick_conclusao);
         }
 
         atual = atual->proximo_evento;
