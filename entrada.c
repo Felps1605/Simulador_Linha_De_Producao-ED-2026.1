@@ -30,7 +30,7 @@ void criar_atividade(etapa *dona, int indice, char *nome, int tempo, float failr
     }
     nova->id = dona->id * 100 + indice;
 
-    if ( tempo <= 0 || failrate < 0.0 || failrate > 1.0)
+    if ( tempo <= 0 || failrate < 0.0 || failrate > 1.0|| capacidade_uf <= 0 || qtd_uf <= 0))
     {
         printf("Erro: dados inválidos na ATIVIDADE %d.\n", nova->id);
         exit(1);
@@ -218,7 +218,7 @@ void lerEntrada( FILE *arquivo, simulacao *s)
             printf("Erro: linha ETAPA inválida.\n");
             exit(1);
         }
-        if (capacidade < 0 || taxaFalha < 0.0 || taxaFalha > 1.0 || qtdAtividades <= 0)
+        if (capacidade <= 0 || taxaFalha < 0.0 || taxaFalha > 1.0 || qtdAtividades <= 0)
         {
             printf("Erro: dados inválidos na ETAPA %d.\n");
             exit(1);
@@ -239,7 +239,7 @@ void lerEntrada( FILE *arquivo, simulacao *s)
                 printf("Erro: linha ATIVIDADE inválida.\n");
                 exit(1);
             }
-            if (tempo <= 0 || taxaFalhaA < 0.0 || taxaFalhaA > 1.0 ||capacidadeuf < 0 || qtdUF < 0)
+            if (tempo <= 0 || taxaFalhaA < 0.0 || taxaFalhaA > 1.0 ||capacidadeuf <= 0 || qtdUF <= 0)
             {
                 printf("Erro: dados inválidos na ATIVIDADE.\n");
                 exit(1);
