@@ -540,6 +540,10 @@ void opcoes(simulacao *s)
 noa * criar_noa(produto *p)
 {
     noa * novo = malloc(sizeof(noa));
+    if(!novo){
+        printf("Erro ao alocar memoria\n");
+        exit (1);
+    }
     novo->p = p;
     novo->esq = NULL;
     novo->dir = NULL;
