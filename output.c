@@ -22,7 +22,7 @@
 static void trajetoria(produto * p);
 static int tempo_filas_atividades(produto * p);
 static int em_linha(simulacao *s);
-
+static void mostrar_arvore(simulacao *s , noa *raiz);
 
 static void imprimir_metadados_arquivo(FILE *arquivo, simulacao *s);
 static void imprimir_relatorio_etapas_arquivo(FILE *arquivo, simulacao *s);
@@ -30,11 +30,12 @@ static void imprimir_relatorio_atividades_arquivo(FILE *arquivo, simulacao *s);
 static void imprimir_relatorio_produtos_arquivo(FILE *arquivo, simulacao *s);
 static void imprimir_historico_produto_arquivo(FILE *arquivo, simulacao *s, produto *p);
 static void trajetoria_arquivo(FILE *arquivo, produto *p);
+static void mostrar_arvore_arquivo(FILE *arquivo, simulacao *s , noa *raiz);
 
 /* ============================================================
    FUNÇOES PUBLICAS
    ============================================================ */
-void relatorio_simulacao(simulacao *s)
+void relatorio_simulacao(simulacao *s)//cria o relatorio completo em forma de arquivo
 {
     if (!s)
     {
@@ -88,52 +89,6 @@ void relatorio_simulacao(simulacao *s)
     liberar_resumos(s);
 }
 */
-void imprimir_historico_produto(simulacao *s, produto *p)
-{
-    if (!p)
-    {
-        printf("Produto nao encontrado\n");
-        return;
-    }
-    printf("\n\n---Produto %d---\n\n", p->id);
-    printf("Modelo: %s\n", s->modelo_produto);
-    if (p->tick_saida_linha)
-    {
-        printf("Tick de Criacao: %d \n", p->tick_criacao);
-        printf("Tick de Entrada na linha: %d \n", p->tick_entrada_linha);
-        printf("Tick de Saida da linha: %d \n", p->tick_saida_linha);
-        printf("Localizacao atual: Pilha de Concluidos \n");
-    }
-    else if (p->tick_entrada_linha)
-    {
-        printf("Tick de Criacao: %d \n", p->tick_criacao);
-        printf("Tick de Entrada na linha: %d \n", p->tick_entrada_linha);
-        if(p->defeituoso == 2)
-            printf("Localizacao atual: Pilha de Lixo \n");
-        else
-            printf("Localizacao atual: Em linha \n");
-    }
-    else
-    {
-        printf("Tick de Criacao: %d \n", p->tick_criacao);
-        printf("Localizacao atual: Fila de entrada da linha \n");
-        return;
-    }
-    int tempo_filas_atividade = tempo_filas_atividades(p);
-    printf("Tempo Total no Sistema: %d \n", p->tick_saida_linha - p->tick_criacao);
-    printf("  Tempo na fila de entrada: %d \n", p->tick_entrada_linha - p->tick_criacao);
-    printf("  Tempo na linha: %d \n", p->tick_saida_linha - p->tick_entrada_linha);
-    printf("    Filas de atividade: %d \n", tempo_filas_atividade);
-    printf("    Processamento e Retrabalho : %d \n",(p->tick_saida_linha - p->tick_entrada_linha) - tempo_filas_atividade);
-    printf("Tempo Total em espera: %d \n", tempo_filas_atividade + (p->tick_entrada_linha - p->tick_criacao));
-    
-    
-    
-    printf("Falhas: %d \n", p->falhas);
-
-    trajetoria(p);
-}
-
 void imprimir_metadados(simulacao *s)
 {
     if (!s)
@@ -287,22 +242,66 @@ void imprimir_relatorio_atividades(simulacao *s)
 }
 
 void imprimir_relatorio_produtos(simulacao *s)
-{
+{   
+    if(!s || !s->finalizados)
+        return;
     printf("\n-------RELATORIO DE PRODUTOS--------\n");
-    produto * atual = s->concluidos->topo;
-    while(atual)
-    {
-        imprimir_historico_produto(s, atual);
-        atual = atual->proximo_produto; 
-    }
+    mostrar_arvore(s , s->finalizados);
 }
 
+void imprimir_historico_produto(simulacao *s, produto *p)
+{
+    if (!p)
+    {
+        printf("Produto nao encontrado\n");
+        return;
+    }
+    printf("\n\n---Produto %d---\n\n", p->id);
+    printf("Modelo: %s\n", s->modelo_produto);
+    if (p->tick_saida_linha > 0)
+    {
+        printf("Tick de Criacao: %d \n", p->tick_criacao);
+        printf("Tick de Entrada na linha: %d \n", p->tick_entrada_linha);
+        printf("Tick de Saida da linha: %d \n", p->tick_saida_linha);
+        printf("Localizacao atual: Pilha de Concluidos \n");
+        int tempo_filas_atividade = tempo_filas_atividades(p);
+        printf("Tempo Total no Sistema: %d \n", p->tick_saida_linha - p->tick_criacao);
+        printf("  Tempo na fila de entrada: %d \n", p->tick_entrada_linha - p->tick_criacao);
+        printf("  Tempo na linha: %d \n", p->tick_saida_linha - p->tick_entrada_linha);
+        printf("    Filas de atividade: %d \n", tempo_filas_atividade);
+        printf("    Processamento e Retrabalho : %d \n",(p->tick_saida_linha - p->tick_entrada_linha) - tempo_filas_atividade);
+        printf("Tempo Total em espera: %d \n", tempo_filas_atividade + (p->tick_entrada_linha - p->tick_criacao));
+    }
+    else if (p->tick_saida_linha < 0)
+    {
+        printf("Tick de Criacao: %d \n", p->tick_criacao);
+        printf("Tick de Entrada na linha: %d \n", p->tick_entrada_linha);
+        printf("Localizacao atual: Pilha de Lixo \n");
+    }
+    else if(p->tick_entrada_linha > 0)
+    {
+        printf("Tick de Criacao: %d \n", p->tick_criacao);
+        printf("Tick de Entrada na linha: %d \n", p->tick_entrada_linha);
+        printf("Localizacao atual: EM LINHA \n");
+    }else {
+        printf("Tick de Criacao: %d \n", p->tick_criacao);
+        printf("Localizacao atual: Fila de entrada da linha \n");
+        return;
+    }
+    
+    
+    
+    
+    printf("Falhas: %d \n", p->falhas);
+
+    trajetoria(p);
+}
 
 void preencher_resumos(resumo_simulacao *rs, pilha *produtos)
 { // percorre cada evento de atividade de cada evento etapa e de cada produto e preenche os resumos
     printf("Iniciando preenchimento de relatorios \n");
     if(!produtos){
-        printf("Pilha de concluidos vazia, nao e possivel fazer relatorio\n");
+        printf("Pilha de concluidos vazia, nao e possivel fazer relatorios\n");
         encerrar_simulacao(rs->s);
     }
     produto *p = produtos->topo;
@@ -484,7 +483,10 @@ void inicializar_resumos(simulacao *s)
 }
 
 void liberar_resumos(simulacao *s)
-{
+{   
+    
+    if(!s || !s->resumo)
+        return;
     resumo_simulacao *rs = s->resumo;
 
     for (int i = 0; i < s->n_etapas; i++)
@@ -493,6 +495,7 @@ void liberar_resumos(simulacao *s)
     }
     free(rs->resumos_etapas);
     free(rs);
+    s->resumo = NULL;
 }
 
 
@@ -707,26 +710,12 @@ static void imprimir_relatorio_atividades_arquivo(FILE *arquivo, simulacao *s)
 
 static void imprimir_relatorio_produtos_arquivo(FILE *arquivo, simulacao *s)
 {
-    if (!arquivo)
-    {
+    if (!arquivo || !s || !s->finalizados)
         return;
-    }
 
     fprintf(arquivo, "\n-------RELATORIO DE PRODUTOS--------\n");
-
-    if (!s || !s->concluidos || !s->concluidos->topo)
-    {
-        fprintf(arquivo, "Nenhum produto concluido.\n");
-        return;
-    }
-
-    produto *atual = s->concluidos->topo;
-
-    while (atual)
-    {
-        imprimir_historico_produto_arquivo(arquivo, s, atual);
-        atual = atual->proximo_produto;
-    }
+    mostrar_arvore_arquivo(arquivo, s, s->finalizados);
+    
 }
 
 static void imprimir_historico_produto_arquivo(FILE *arquivo, simulacao *s, produto *p)
@@ -746,66 +735,53 @@ static void imprimir_historico_produto_arquivo(FILE *arquivo, simulacao *s, prod
 
     fprintf(arquivo, "Modelo: %s\n", s->modelo_produto);
 
-    if (p->tick_saida_linha)
+    if (p->tick_saida_linha > 0)
     {
-        fprintf(arquivo, "Tick de Criacao: %d \n",
-                p->tick_criacao);
-
-        fprintf(arquivo, "Tick de Entrada na linha: %d \n",
-                p->tick_entrada_linha);
-
-        fprintf(arquivo, "Tick de Saida da linha: %d \n",
-                p->tick_saida_linha);
-
+        fprintf(arquivo, "Tick de Criacao: %d \n", p->tick_criacao);
+        fprintf(arquivo, "Tick de Entrada na linha: %d \n", p->tick_entrada_linha);
+        fprintf(arquivo, "Tick de Saida da linha: %d \n", p->tick_saida_linha);
         fprintf(arquivo, "Localizacao atual: Pilha de Concluidos \n");
+
+        int tempo_filas_atividade = tempo_filas_atividades(p);
+
+        fprintf(arquivo, "Tempo Total no Sistema: %d \n",
+                p->tick_saida_linha - p->tick_criacao);
+
+        fprintf(arquivo, "  Tempo na fila de entrada: %d \n",
+                p->tick_entrada_linha - p->tick_criacao);
+
+        fprintf(arquivo, "  Tempo na linha: %d \n",
+                p->tick_saida_linha - p->tick_entrada_linha);
+
+        fprintf(arquivo, "    Filas de atividade: %d \n",
+                tempo_filas_atividade);
+
+        fprintf(arquivo, "    Processamento e Retrabalho : %d \n",
+                (p->tick_saida_linha - p->tick_entrada_linha)
+                - tempo_filas_atividade);
+
+        fprintf(arquivo, "Tempo Total em espera: %d \n",
+                tempo_filas_atividade +
+                (p->tick_entrada_linha - p->tick_criacao));
     }
-    else if (p->tick_entrada_linha)
+    else if (p->tick_saida_linha < 0)
     {
-        fprintf(arquivo, "Tick de Criacao: %d \n",
-                p->tick_criacao);
-
-        fprintf(arquivo, "Tick de Entrada na linha: %d \n",
-                p->tick_entrada_linha);
-
-        if (p->defeituoso == 2)
-        {
-            fprintf(arquivo, "Localizacao atual: Pilha de Lixo \n");
-        }
-        else
-        {
-            fprintf(arquivo, "Localizacao atual: Em linha \n");
-        }
+        fprintf(arquivo, "Tick de Criacao: %d \n", p->tick_criacao);
+        fprintf(arquivo, "Tick de Entrada na linha: %d \n", p->tick_entrada_linha);
+        fprintf(arquivo, "Localizacao atual: Pilha de Lixo \n");
+    }
+    else if (p->tick_entrada_linha > 0)
+    {
+        fprintf(arquivo, "Tick de Criacao: %d \n", p->tick_criacao);
+        fprintf(arquivo, "Tick de Entrada na linha: %d \n", p->tick_entrada_linha);
+        fprintf(arquivo, "Localizacao atual: EM LINHA \n");
     }
     else
     {
-        fprintf(arquivo, "Tick de Criacao: %d \n",
-                p->tick_criacao);
-
+        fprintf(arquivo, "Tick de Criacao: %d \n", p->tick_criacao);
         fprintf(arquivo, "Localizacao atual: Fila de entrada da linha \n");
         return;
     }
-
-    int tempo_filas_atividade = tempo_filas_atividades(p);
-
-    fprintf(arquivo, "Tempo Total no Sistema: %d \n",
-            p->tick_saida_linha - p->tick_criacao);
-
-    fprintf(arquivo, "  Tempo na fila de entrada: %d \n",
-            p->tick_entrada_linha - p->tick_criacao);
-
-    fprintf(arquivo, "  Tempo na linha: %d \n",
-            p->tick_saida_linha - p->tick_entrada_linha);
-
-    fprintf(arquivo, "    Filas de atividade: %d \n",
-            tempo_filas_atividade);
-
-    fprintf(arquivo, "    Processamento e Retrabalho : %d \n",
-            (p->tick_saida_linha - p->tick_entrada_linha)
-            - tempo_filas_atividade);
-
-    fprintf(arquivo, "Tempo Total em espera: %d \n",
-            tempo_filas_atividade +
-            (p->tick_entrada_linha - p->tick_criacao));
 
     fprintf(arquivo, "Falhas: %d \n", p->falhas);
 
@@ -859,6 +835,15 @@ static void trajetoria_arquivo(FILE *arquivo, produto *p)
     }
 }
 
+static void mostrar_arvore_arquivo(FILE *arquivo, simulacao *s , noa *raiz)
+{
+    if(raiz){
+        mostrar_arvore_arquivo(arquivo, s, raiz->esq);
+        imprimir_historico_produto_arquivo(arquivo, s, raiz->p);
+        mostrar_arvore_arquivo(arquivo, s, raiz->dir);
+    }
+}
+
 /* ============================================================
    FUNÇÕES AUXILIARES
    ============================================================ */
@@ -897,7 +882,7 @@ static int em_linha(simulacao *s)
     return soma;
 }
 
-// funcao auxiliar de imprimir_historico_produto
+// funcoes auxiliares de imprimir_historico_produto
 static void trajetoria(produto * p)
 {
     printf("\nTRAJETORIA:\n\n");
@@ -907,11 +892,14 @@ static void trajetoria(produto * p)
         printf("Etapa %d %s tentativa %d\n", atual->e->id, atual->e->nome, atual->tentativa);
         evento_atividade *a_atual = atual->historico_atividades;
         while (a_atual)
-        {
-            printf("Atividade %d %s fila: %d inicio: %d conclusao: %d  %s\n", a_atual->a->id, a_atual->a->nome, a_atual->tick_fila, a_atual->tick_inicio_processamento, a_atual->tick_fim_processamento, a_atual->falhou ? "FALHOU" : "OK");
-              a_atual = a_atual->proximo_evento;
+        {   
+            if(a_atual->tick_fim_processamento != -1)
+                printf("Atividade %d %s fila: %d inicio: %d conclusao: %d  %s\n", a_atual->a->id, a_atual->a->nome, a_atual->tick_fila, a_atual->tick_inicio_processamento, a_atual->tick_fim_processamento, a_atual->falhou ? "FALHOU" : "OK");
+            else
+                printf("Atividade atual: %d, %s\n", a_atual->a->id, a_atual->a->nome);
+            a_atual = a_atual->proximo_evento;
         }
-        if(!atual->falhou){
+        if(atual->tick_fim > 0){
             printf("Tempo na etapa: %d\n", atual->tick_fim - atual->tick_inicio);
             printf("  Tempo na fila de prontos da etapa: %d\n", atual->tick_fim - atual->tick_conclusao);
         }
@@ -919,4 +907,11 @@ static void trajetoria(produto * p)
     }
 }
 
-
+static void mostrar_arvore(simulacao *s , noa *raiz)
+{
+    if(raiz){
+        mostrar_arvore(s, raiz->esq);
+        imprimir_historico_produto(s, raiz->p);
+        mostrar_arvore(s, raiz->dir);
+    }
+}

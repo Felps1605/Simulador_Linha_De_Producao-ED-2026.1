@@ -11,6 +11,10 @@ typedef struct pilha pilha;
 typedef struct simulacao simulacao;
 typedef struct evento_atividade evento_atividade;
 typedef struct evento_etapa evento_etapa;
+typedef struct resumo_simulacao resumo_simulacao;
+typedef struct resumo_etapa resumo_etapa;
+typedef struct resumo_atividade resumo_atividade;
+typedef struct noa noa;
 
 
 struct simulacao{
@@ -35,8 +39,8 @@ struct simulacao{
     int    produto_id;
     int    etapa_id;
     int    MODO_MANUAL;
-    //int  MODO_MUDO; DESABILITARIA OS PRINTFS DURANTE A EXECUÇÃO
     int    tempo_total_espera_produtos;
+    int  tempo_excedido;
     //com a soma de todos os tempos de espera de cada um dos produtos é só dividir pelo
     // n de produtos concluidos para ter o tempo medio de espera
 
@@ -45,8 +49,10 @@ struct simulacao{
     fila * fila_entrada;
     pilha * concluidos;
     pilha * lixo;
-    //TabelaHash       hash_produtos
-    //NoBST*           bst_concluidos  (ponteiro pra raiz)
+    noa * em_linha;
+    noa * finalizados;
+    
+    resumo_simulacao * resumo;
 
 };
 
@@ -56,7 +62,8 @@ struct etapa{
     int num_atividades;
     int capacidade_max; //somatoria da capacidade de cada atividade + espaço para filas
     int ocupacao; //número de produtos atualmente na etapa, tanto em atividades quanto em filas
-    
+    float failrate;
+
     etapa * proxima_etapa;
     etapa * etapa_anterior;     
     
@@ -68,6 +75,8 @@ struct etapa{
     int falhas;
     int qtd_produtos_concluidos;//incrementar quando um produto sai
     int qtd_produtos_entraram;//incrementar quando um produto entra
+
+    resumo_etapa * resumo;
     
 };
 
@@ -86,6 +95,8 @@ struct atividade{
 
     atividade * proxima_atividade;
 
+    resumo_atividade * resumo;
+
     fila * f; //fila de espera para essa atividade
 };
 
@@ -100,12 +111,12 @@ struct produto{
     atividade * atividade_atual;
 
     produto *proximo_produto;
-    
+     
     
     int tick_criacao; 
     int tick_entrada_linha; 
     int tick_saida_linha; 
-    //tempo total implicito: tick_saida_linha - tick_criacao, não precisa ser armazenado
+
      
     //int tempo_total_em_espera;//somatoria dos tempos de espera totais de cada etapa e na fila inicial
     //também é possivel calcular o tempo total em espera subtraindo o tempo total real do tempo total mínimo
@@ -178,109 +189,65 @@ struct pilha
     int em_pilha;
 };
 
-/*
-typedef struct etapa etapa;
-typedef struct atividade atividade;
-typedef struct produto produto;
-typedef struct fila fila;
-typedef struct etapas etapas;
-typedef struct slot slot;
-typedef struct pilha pilha;
-typedef struct simulacao simulacao;
-
-struct simulacao
-{
-    fila *fila_entrada;
-    pilha *lixo;
-    pilha *concluidos;
-    etapas * linha; //etapas *g_e = NULL;
-
-    int produto_id;
-    int etapa_id;
-    int produtos_criados;
-    int MODO_MANUAL;
-
-    int    semente;
-    char   nome_cenario[100];
-    char   arquivo_entrada[100];
-    char   id_simulacao[100];
-    int    n_produtos_total;
-    int    vazao;
-    char   modelo_produto[100];
-    int    max_ticks;
-
-    // Estado
-    int    tick_atual;
-    int    produtos_concluidos;
-    int    falhas_totais;
-    
-    
-
-    //TODA E QUALQUER FUNÇÃO QUE USE UMA "VARIAVEL GLOBAL": g_e, lixo, concluidos, fila de entrada, tick, ids e n de criados etc PRECISA SER REVISADA
-    //NECESSÁRIO UMA CAÇA A QUALQUER REFERENCIA AO SISTEMA ANTIGO DE VARIÁVEIS GLOBAIS
-    //REVISAR FUNÇAO POR FUNCAO
-    
-    //será q vale a pena fazer um ponteiro global para a simulaçao?
-};
-struct etapa
-{
-    int id;
-    char nome[50];
-    atividade *primeira_atividade;
-    atividade *ultima_atividade;
-    etapa *proxima_etapa;
-    etapa *etapa_anterior;
-    fila *f;
-    int capacidade_max; // somatoria da capacidade de cada atividade + espaço para filas
-    int ocupacao;       // número de produtos atualmente na etapa, tanto em atividades quanto em
-    //int num_atividades;
-};
-struct atividade
-{
-    int id;
-    char nome[50];
-    etapa *etapa_dona;
-    // produto *produto_execucao;
-    atividade *proxima_atividade;
-    fila *f; // fila de prontos para entrar na atividade, entrarão quando tiver capacidade
-    int capacidade_max;
-    int ocupacao;
-    slot *slots;                // vetor de slots, cada slot representa um produto em execução nessa atividade, o tamanho do vetor é igual à capacidade_max
-    int tempo_de_processamento; // em ticks
-    float failrate;             // probabilidade de falha, entre 0 e 1
-    int qtd_uf;
-};
-struct produto
-{
-    int id;
-    produto *proximo_produto;
-    atividade *atividade_atual;
-    etapa *etapa_atual;
-    int defeituoso;
-    int falhas;
-};
-struct fila
-{
-    produto *inicio;
-    produto *fim;
-    int em_fila;
-};
-struct etapas
-{
-    etapa *primeira_etapa;
-    etapa *ultima_etapa;
-};
-struct slot
+struct noa
 {
     produto *p;
-    int tempo_restante;
+    noa * esq;
+    noa * dir;
 };
-struct pilha
-{
-    produto *topo;
-    produto *base;
-    int em_pilha;
+
+/*---------------
+STRUCTS DE RESUMO
+-----------------*/
+
+struct resumo_simulacao{
+    simulacao * s;
+
+    float tempo_medio_total;
+    float tempo_medio_em_espera;
+    float tempo_medio_filas_atividades;
+    float tempo_medio_na_fila_entrada;
+    float tempo_medio_retrabalho;
+    int tempo_minimo;
+    int meta_alcancada;
+
+    resumo_etapa * resumos_etapas;
+
 };
-*/
+
+struct resumo_etapa{
+    etapa * e;
+
+    float soma_tempo_fila_prontos;
+    float soma_tempo_total;
+
+    int passagens;
+    float falhas_por_produto;
+    int tempo_minimo;
+    float tempo_medio;
+    int maior_tempo;
+    float tempo_medio_filas_total;
+    float tempo_medio_filas_atividades;
+    float tempo_medio_fila_prontos;
+
+    resumo_atividade * resumos_atividades;
+
+};
+
+struct resumo_atividade{
+    atividade * a;
+
+    float soma_tempo_na_fila;
+    float soma_tempo_na_fila_etapa_valida;
+    float soma_tempo_total;
+
+    int passagens;
+    float tempo_medio_na_fila;
+    float tempo_medio_na_fila_etapas_validas;
+    int maior_tempo;
+    float tempo_medio_total;
+
+};
+
 
 #endif

@@ -140,6 +140,7 @@ void inicializar_simulacao(simulacao *s)
 
     s->tempo_total_espera_produtos = 0;
     s->tick_atual = 0;
+    strcpy(s->arquivo_entrada, "arquivo.txt");
 
     // Valores padrão (podem ser sobrescritos pelo arquivo)
     s->vazao = 2;
@@ -149,6 +150,8 @@ void inicializar_simulacao(simulacao *s)
    
     s->tempo_excedido = 0;
     s->resumo = NULL;
+    s->em_linha = NULL;
+    s->finalizados = NULL;
     
 }
 // Função principal de leitura do arquivo

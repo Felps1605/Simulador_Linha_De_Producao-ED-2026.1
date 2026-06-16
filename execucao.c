@@ -12,11 +12,10 @@
   ----------------------*/
 
 void enfileirar(produto *p, fila **f);
-void empilhar(produto *p, pilha **pp);
+void empilhar(produto *p, pilha **pp, simulacao *s);
 void criar_produto(simulacao *s);
 produto *desenfileirar(fila *f);
 void mostrar_fila(fila *f);
-produto * buscar_produto(pilha *p, int id);
 void falhar_produto(produto *p, float failrate, simulacao *sim);
 void mostrar_atividades(atividade *primeira);
 void mostrar_etapas(simulacao * s);
@@ -45,8 +44,13 @@ void popular(simulacao *s);
 void registrar_inicio_etapa(produto *p, simulacao *s);
 void registrar_inicio_atividade(produto *p, simulacao *s);
 int tempo_limite_excedido(simulacao *s);
-void opcoes(simulacao *s);
-
+noa * criar_noa(produto *p);
+noa * inserir_noa(noa * raiz, produto *p);
+noa * buscar_noa(noa * raiz, int id);
+noa * remover_noa(noa * raiz, int id);
+void liberar_arvore(noa ** raiz);
+void liberar_historico(produto *p);
+void liberar_produto(produto * p);
 /*-----------------------
   FUNCÕES PUBLICAS
   ----------------------*/
@@ -135,11 +139,22 @@ void opcoes_finais(simulacao *s)
         break;
         case 4:
         {
+            
             int id;
-            printf("Digite o id do produto que deseja visualizar: (atualmente so disponiveis produtos concluidos) ");
+            printf("Digite o id do produto que deseja visualizar: \n");
             scanf("%d", &id);
-            produto *p = buscar_produto(s->concluidos, id);
-            imprimir_historico_produto(s, p);
+            noa * raiz = s->em_linha;
+            raiz = buscar_noa(raiz, id);
+            if(raiz){
+                imprimir_historico_produto(s, raiz->p);
+            }else{
+                raiz = s->finalizados;
+                raiz = buscar_noa(raiz, id); 
+                    if(raiz)
+                        imprimir_historico_produto(s, raiz->p);
+                    else
+                        printf("Produto nao encontrado\n");
+            }
 
         }
         break;
@@ -312,9 +327,13 @@ void encerrar_simulacao(simulacao *s)
     liberar_pilha(s->lixo);
     liberar_pilha(s->concluidos);
     liberar_resumos(s);
+    liberar_arvore(&(s->em_linha));
+    liberar_arvore(&(s->finalizados));
     printf("Programa encerrado\n");
     exit(0);
 }
+
+
 
 /*-----------------------
   FUNCÕES AUXILIARES
@@ -401,10 +420,20 @@ void opcoes(simulacao *s)
         case 4:
         {
             int id;
-            printf("Digite o id do produto que deseja visualizar: (atualmente so disponiveis produtos concluidos) ");
+            printf("Digite o id do produto que deseja visualizar: \n");
             scanf("%d", &id);
-            produto *p = buscar_produto(s->concluidos, id);
-            imprimir_historico_produto(s, p);
+            noa * raiz = s->em_linha;
+            raiz = buscar_noa(raiz, id);
+            if(raiz){
+                imprimir_historico_produto(s, raiz->p);
+            }else{
+                raiz = s->finalizados;
+                raiz = buscar_noa(raiz, id); 
+                    if(raiz)
+                        imprimir_historico_produto(s, raiz->p);
+                    else
+                        printf("Produto nao encontrado\n");
+            }
 
         }
         break;
@@ -446,6 +475,98 @@ void opcoes(simulacao *s)
     }
 }
 
+noa * criar_noa(produto *p)
+{
+    noa * novo = malloc(sizeof(noa));
+    novo->p = p;
+    novo->esq = NULL;
+    novo->dir = NULL;
+    return novo;
+}
+
+noa * inserir_noa(noa *raiz, produto *p)
+{
+    if(!raiz)
+    {
+        raiz = criar_noa(p);
+        return raiz;
+    }
+
+    if(p->id < raiz->p->id)
+        raiz->esq = inserir_noa(raiz->esq, p);
+
+    if(p->id > raiz->p->id)
+        raiz->dir = inserir_noa(raiz->dir, p);
+
+    return raiz;
+}
+
+noa * buscar_noa(noa * raiz, int id)
+{
+    if(!raiz || raiz->p->id == id)
+        return raiz;
+    
+    if(id < raiz->p->id)
+        return buscar_noa(raiz->esq, id); 
+
+    return buscar_noa(raiz->dir, id); 
+}
+
+noa * remover_noa(noa * raiz, int id)
+{
+    if(!raiz)
+    {   
+        printf("Produto nao se encontra na arvore\n");
+        return NULL;
+    }
+
+    if(id < raiz->p->id){
+        raiz->esq = remover_noa(raiz->esq, id);
+        return raiz;
+    }
+    if(id > raiz->p->id){
+        raiz->dir = remover_noa(raiz->dir, id);
+        return raiz;
+    }
+
+    if(!raiz->esq && !raiz->dir){
+        free(raiz);
+        return NULL;
+    }else if(raiz->esq && raiz->dir){
+        noa * p_aux = raiz;
+        noa * aux = raiz->esq;
+        while(aux->dir){
+            p_aux = aux;
+            aux = aux->dir;
+        }
+        if(p_aux != raiz){
+            p_aux->dir = aux->esq;
+            aux->esq = raiz->esq;
+        }
+        aux->dir = raiz->dir;
+        free (raiz);
+        return aux;
+
+    }else{
+        noa * aux = raiz->dir? raiz->dir : raiz->esq;
+        free(raiz);
+        return aux;
+    }
+       
+}
+
+void liberar_arvore(noa ** raiz)
+{   
+    if(*raiz)
+    {
+        liberar_arvore(&((*raiz)->esq));
+        liberar_arvore(&((*raiz)->dir));
+        free(*raiz);
+        *raiz = NULL;
+    }
+}
+
+
 void enfileirar(produto *p, fila **f)
 {   
     
@@ -473,7 +594,7 @@ void enfileirar(produto *p, fila **f)
     (*f)->fim = p;
     
 }
-void empilhar(produto *p, pilha **pp)
+void empilhar(produto *p, pilha **pp, simulacao * s)
 {
     if (*pp == NULL)
     {
@@ -493,10 +614,14 @@ void empilhar(produto *p, pilha **pp)
     {
         (*pp)->topo = p;
         (*pp)->base = p;
+        s->em_linha = remover_noa(s->em_linha, p->id);
+        s->finalizados = inserir_noa(s->finalizados, p);
         return;
     }
     p->proximo_produto = (*pp)->topo;
     (*pp)->topo = p;
+    s->em_linha = remover_noa(s->em_linha, p->id);
+    s->finalizados = inserir_noa(s->finalizados, p);
 }
 void criar_produto(simulacao *s)
 {
@@ -528,6 +653,7 @@ void criar_produto(simulacao *s)
 
     s->produto_id++;
     s->produtos_criados++;
+    s->em_linha = inserir_noa(s->em_linha, novo);
     printf("Produto %d criado e adicionado no final da fila \n", novo->id);
 }
 produto *desenfileirar(fila *f)
@@ -560,23 +686,6 @@ void mostrar_fila(fila *f)
         atual = atual->proximo_produto;
     }
     printf("\n");
-}
-produto * buscar_produto(pilha *p, int id)
-{
-    if(!p || !p->em_pilha)
-    {
-        printf("Pilha vazia\n");
-        return NULL;
-    }
-    produto *atual = p->topo;
-    while(atual)
-    {
-        if(atual->id == id)
-            return atual;
-        atual = atual->proximo_produto;
-    }
-    return NULL;
-    
 }
 
 void falhar_produto(produto *p, float failrate, simulacao *s)
@@ -714,7 +823,7 @@ int verificar_defeitos(produto *p, simulacao *s)
         if (p->defeituoso == 2)
         {
             printf("Produto %d processado com falha catastrofica e direcionado a pilha de lixo\n", p->id);
-            empilhar(p, &s->lixo);
+            empilhar(p, &s->lixo, s);
             p->tick_saida_linha = -1 * (s->tick_atual);
             p->evento_atual_etapa->tick_fim = -1 * (s->tick_atual);
             e->ocupacao--;
@@ -755,7 +864,7 @@ void avancar_produto(atividade *a, produto *p, simulacao *s)
     }
     printf("Produto %d concluiu a ultima etapa do processo\n", p->id);
     p->evento_atual_etapa->tick_fim = s->tick_atual;
-    empilhar(p, &s->concluidos);
+    empilhar(p, &s->concluidos, s);
     s->produtos_concluidos++;
     p->etapa_atual = NULL;
     p->atividade_atual = NULL;
@@ -808,7 +917,7 @@ void liberar_fila(fila *f)
     {
         produto *aux = atual;
         atual = atual->proximo_produto;
-        free(aux);
+        liberar_produto(aux);
     }
     free(f);
 }
@@ -822,7 +931,7 @@ void liberar_atividade(atividade *a)
     {
         if (a->slots[i].p)
         {
-            free(a->slots[i].p);
+            liberar_produto(a->slots[i].p);
             a->slots[i].p = NULL;
         }
     }
@@ -864,11 +973,39 @@ void liberar_pilha(pilha *p)
     {
         produto *aux = atual;
         atual = atual->proximo_produto;
-        free(aux);
+        liberar_produto(aux);
     }
     free(p);
 }
-
+void liberar_produto(produto * p)
+{
+    if(!p)
+        return;
+    liberar_historico(p);
+    free(p);
+}
+void liberar_historico(produto *p)
+{
+    if(!p->historico_etapas)
+        return;
+    evento_etapa * atual = p->historico_etapas;
+    while(atual)
+    {
+        if(atual->historico_atividades)
+        {
+            evento_atividade *a_atual = atual->historico_atividades;
+            while(a_atual)
+            {
+                evento_atividade *aux = a_atual;
+                a_atual = a_atual->proximo_evento;
+                free(aux);
+            }
+        }
+        evento_etapa *aux = atual;
+        atual = atual->proximo_evento;
+        free(aux);
+    }
+}
 etapa *buscar_etapa(etapas *e, int id)
 {
     if (!e)
