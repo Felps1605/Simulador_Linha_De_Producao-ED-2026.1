@@ -223,6 +223,7 @@ void lerEntrada( FILE *arquivo, simulacao *s)
             printf("Erro: dados inválidos na ETAPA %d.\n");
             exit(1);
         }
+        
 
         etapa * e = criar_etapa(s, nomeEtapa, capacidade, qtdAtividades, taxaFalha);
 
@@ -236,6 +237,11 @@ void lerEntrada( FILE *arquivo, simulacao *s)
                 sscanf(linha, "ATIVIDADE %d %f %d %d %49s", &tempo, &taxaFalhaA, &capacidadeuf, &qtdUF, &nomeAtividade) != 5)
             {
                 printf("Erro: linha ATIVIDADE inválida.\n");
+                exit(1);
+            }
+            if (tempo <= 0 || taxaFalhaA < 0.0 || taxaFalhaA > 1.0 ||capacidadeuf < 0 || qtdUF < 0)
+            {
+                printf("Erro: dados inválidos na ATIVIDADE.\n");
                 exit(1);
             }
 
