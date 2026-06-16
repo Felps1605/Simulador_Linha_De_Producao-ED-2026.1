@@ -18,7 +18,11 @@ int main()
         return 1;
     }
 
-    lerEntrada(arquivo, &s);
+    if (!lerEntrada(arquivo, &s))
+    {
+        fclose(arquivo);
+        encerrar_simulacao(&s);
+    }
 
     fclose(arquivo);
     

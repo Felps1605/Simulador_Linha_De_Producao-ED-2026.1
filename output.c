@@ -509,12 +509,14 @@ void liberar_resumos(simulacao *s)
     if(!s || !s->resumo)
         return;
     resumo_simulacao *rs = s->resumo;
-
-    for (int i = 0; i < s->n_etapas; i++)
+    if(rs->resumos_etapas)
     {
-        free(rs->resumos_etapas[i].resumos_atividades);
+        for (int i = 0; i < s->n_etapas; i++)
+        {
+            free(rs->resumos_etapas[i].resumos_atividades);
+        }
+        free(rs->resumos_etapas);
     }
-    free(rs->resumos_etapas);
     free(rs);
     s->resumo = NULL;
 }

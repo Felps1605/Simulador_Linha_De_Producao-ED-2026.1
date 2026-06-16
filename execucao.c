@@ -350,15 +350,18 @@ void limpar_buffer() {
 }
 
 void encerrar_simulacao(simulacao *s)
-{
+{   
     printf("Liberando memoria\n");
-    liberar_fila(s->fila_entrada);
-    liberar_etapas(s->linha);
-    liberar_pilha(s->lixo);
-    liberar_pilha(s->concluidos);
-    liberar_resumos(s);
-    liberar_arvore(&(s->em_linha));
-    liberar_arvore(&(s->finalizados));
+    if (s)
+    {
+        liberar_fila(s->fila_entrada);
+        liberar_etapas(s->linha);
+        liberar_pilha(s->lixo);
+        liberar_pilha(s->concluidos);
+        liberar_resumos(s);
+        liberar_arvore(&(s->em_linha));
+        liberar_arvore(&(s->finalizados)); 
+    }
     printf("Programa encerrado\n");
     exit(0);
 }
@@ -689,16 +692,14 @@ void criar_produto(simulacao *s)
     novo->proximo_produto = NULL;
     novo->atividade_atual = NULL;
     novo->etapa_atual = NULL;
-    enfileirar(novo, &s->fila_entrada);
+    
     novo->id = s->produto_id;
     novo->defeituoso = 0;
     novo->falhas = 0;
 
-
     novo->tick_criacao = 0;
     novo->tick_entrada_linha= 0;
     novo->tick_saida_linha= 0;
-
 
     novo->historico_etapas = NULL;
     novo->evento_atual_etapa = NULL;
@@ -707,6 +708,7 @@ void criar_produto(simulacao *s)
 
     s->produto_id++;
     s->produtos_criados++;
+    enfileirar(novo, &s->fila_entrada);
     s->em_linha = inserir_noa(s->em_linha, novo);
     printf("Produto %d criado e adicionado no final da fila \n", novo->id);
 }
@@ -980,20 +982,24 @@ void liberar_atividade(atividade *a)
         return;
 
     // libera produtos nos slots
-    for (int i = 0; i < a->capacidade_max; i++)
-    {
-        if (a->slots[i].p)
+    if(a->slots){
+        for (int i = 0; i < a->capacidade_max; i++)
         {
-            liberar_produto(a->slots[i].p);
-            a->slots[i].p = NULL;
+            if (a->slots[i].p)
+            {
+                liberar_produto(a->slots[i].p);
+                a->slots[i].p = NULL;
+            }
         }
+        free(a->slots);  
     }
-    free(a->slots);
     liberar_fila(a->f);
     free(a);
 }
 void liberar_atividades(etapa *e)
 {
+    if (!e)
+        return;
     atividade *atual = e->primeira_atividade;
     while (atual)
     {
@@ -1006,6 +1012,8 @@ void liberar_atividades(etapa *e)
 }
 void liberar_etapas(etapas *e)
 {
+    if(!e)
+        return;
     etapa *atual = e->primeira_etapa;
     while (atual)
     {
